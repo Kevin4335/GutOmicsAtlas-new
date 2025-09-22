@@ -1,0 +1,11 @@
+*.DS_Store
+__pycache__/
+*.out
+/imgs/slide*.png
+/imgs/parts/
+/js-build/*.js
+/webserver/
+~$*
+*_logs.txt
+id_rsa
+config.py

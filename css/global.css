@@ -1,0 +1,252 @@
+@font-face {
+    font-family: 'Lexend';
+    src: url('../fonts/Lexend.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+
+
+* {
+    color: #282828;
+    font-family: "Arial", sans-serif;
+    /* font-family: "Comfortaa", sans-serif; */
+    font-weight: 500;
+}
+
+html {
+    background-color: #f8f8f8;
+}
+
+:root {
+    --title-height: 4vw;
+    --title-margin: 32px;
+    --nav-item-height: 3.5vw;
+    --nav-bar-height: 0.25vw;
+}
+
+nav {
+    display: flex;
+    background-color: #9a4942;
+    height: 4.2vw;
+}
+
+#title-text {
+    width: auto;
+    flex: 1;
+    height: var(--title-height);
+    line-height: calc(var(--title-height) + 0.3vw); /* countereffect the upward by this font */
+    background-repeat: no-repeat;
+    background-position-y: center;
+    margin-left: var(--title-margin);
+    /* border-radius: 1.5vw; */
+    font-size: 1.3vw;
+    margin-top:0.05vw;
+}
+
+#title-text h1 {
+    line-height: inherit;
+    font-size: inherit;
+    font-family: "Lexend", sans-serif;
+    font-weight: 700;
+    font-family: "Lexend", cursive;
+    font-weight: 500;
+    margin-top: -0.19vw;
+    color: white;
+    text-align: left;
+    margin-left: 0.5vw;
+    vertical-align: top;
+}
+
+#title-text h1 p {
+    display: inline-block;
+    font-size: inherit;
+    font-family: inherit;
+    line-height: inherit;
+    color: inherit;
+    font-weight: inherit;
+    color: yellow;
+    vertical-align: top;
+}
+
+#nav {
+    display: flex;
+    margin-right:32px;
+    justify-content: right;
+    height: var(--nav-item-height);
+    /* overflow: visible; */
+}
+
+#nav>div{
+    margin-top:0.8vw;
+    color:yellow;
+    margin-left:0.25vw;
+    margin-right:0.25vw;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+#nav a {
+    /* border-radius: 1vw;  */
+    /* transition: background-color 0.2s ease, transform 0.1s ease; */
+
+    display:flex;
+    width: min-content;
+    white-space: nowrap;
+    margin-left: 0.5vw;
+    margin-right: 0.5vw;
+    padding-left:0.2vw;
+    padding-right:0.2vw;
+    font-size: 0.9vw !important;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    line-height: calc(var(--nav-item-height) - var(--nav-bar-height));
+    margin-top:0.7vw;
+    height: 70%;
+    color: white;
+    position: relative;
+    font-family: "Lexend", sans-serif;
+    font-weight: 350;
+    /* overflow: visible; */
+    /* box-sizing: content-box; */
+    
+}
+
+#nav>a.current{
+    text-shadow:1.1px 0 0 currentColor;
+}
+
+#nav>a.current:after {
+    content: ''; /* will only display when have content */
+    position: absolute;
+    bottom: 0;
+    left: 50%; /* make the position in the center */
+    width: 100%;
+    height: var(--nav-bar-height);
+    background-color: white;
+    /* border-radius: 0.1vw; */
+    transform: translateX(-50%); /* move left 50%, to make it in the middle */
+    display: block;
+}
+
+#nav>a:hover {
+    /* color:white; */
+    /* background-color: rgb(133, 77, 72); */
+}
+
+#nav>.current {
+    /* color: white; */
+    /* background-color: rgb(133, 77, 72) !important; */
+}
+
+#nav a:nth-last-of-type(-n+2) {
+    /* Your styles here */
+    color: yellow;
+}
+
+#nav a:nth-last-of-type(-n+2):after {
+    /* Your styles here */
+    background-color: yellow;
+}
+
+
+html, body {
+    height: 100%;
+    min-height: 100%;
+}
+body {
+    min-height: 100vh;
+}
+
+.selected-option {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 15vw;
+    height: 2vw;
+    line-height: 2vw;
+    font-size: 1.15vw;
+    z-index: 0;
+}
+
+.input-desc {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: var(--lib-text-single-height);
+    line-height: var(--lib-text-single-height);
+    font-size: 1.5vw;
+    font-family: "Reddit Mono", monospace;
+    font-weight: 400;
+}
+
+
+#img-container {
+    margin-left: 10vw;
+    width: 70vw;
+    min-height: 20vw;
+}
+
+#img-container > img {
+    width: 100%;
+    display: none;
+}
+
+#img-container > p {
+    width: 100%;
+    display: none;
+    text-align: center;
+    color: red;
+    line-height: 1.2;
+    padding-top: 3vw;
+    font-size: 1.75vw;
+}
+
+#img-container > p.black {
+    color: #282828;
+}
+
+#img-container > p.green {
+    color: green;
+}
+
+footer {
+    margin-top: 2.5vw;
+    padding-bottom: 1vw;
+    width: 100%;
+    height: 1.2vw;
+    box-sizing: content-box;
+}
+
+footer p {
+    width: 100%;
+    text-align: center;
+    font-size: 1vw;
+    height: 100%;
+    line-height: 1.2vw;
+    color: #666;
+}
+
+footer p:hover {
+    color: #666;
+}
+
+nav * {
+    box-sizing: border-box;
+}
+
+#logo {
+    width: 4.5vw;
+    display: inline-block;
+    margin-top: -0.125vw;
+    margin-right: -1vw;
+}
+
+#title-text > h1 {
+    display: inline-block;
+}
+
+#title-text {
+    text-align: left;
+}
