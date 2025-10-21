@@ -44,12 +44,36 @@
   <div id="age-banner">Fetal or Adult</div>
   <!-- The script below updates the age banner based on the URL parameter. -->
   <script src="/js/scrna_region.js"></script>
-    <p id="subpage-title">Region Comparison</p>
-    <img src="/imgs/region_left.png" id="region-left">
-    <!-- <img src="/imgs/region_upright.png" id="region-upright">
-    <img src="/imgs/region_downright.png" id="region-downright"> -->
-    <img src="/imgs/region_right_both.png" id="region-right-both">
-    <a id="region-xls" class="lib-submit" href="/imgs/region_no_embed.xls">Download DEG list</a>
+
+  <p id="subpage-title">Region Comparison</p>
+
+  <!-- Small Intestine -->
+  <div id="region-plots" style="margin-top: 2.5rem;">
+    <img
+      id="region-small"
+      src="/imgs/scrna_adult_epithelial_regioncomp_SmallintestinalIMAplot.png"
+      data-adult="/imgs/scrna_adult_epithelial_regioncomp_SmallintestinalIMAplot.png"
+      data-fetal="/imgs/scrna_fetal_epithelial_regioncomp_SmallintestinalIMAplot.png"
+      alt="Small Intestine MA Plot"
+    >
+    <img
+      id="region-large"
+      src="/imgs/scrna_adult_epithelial_regioncomp_LargeintestinalIMAplot.png"
+      data-adult="/imgs/scrna_adult_epithelial_regioncomp_LargeintestinalIMAplot.png"
+      data-fetal="/imgs/scrna_fetal_epithelial_regioncomp_LargeintestinalIMAplot.png"
+      alt="Large Intestine MA Plot"
+    >
+  </div>
+
+  <a id="region-xls"
+    class="lib-submit"
+    href="/imgs/scrna_adult_epithelial_regioncomp.csv"
+    data-adult="/imgs/scrna_adult_epithelial_regioncomp.csv"
+    data-fetal="/imgs/scrna_fetal_epithelial_regioncomp.csv">
+    Download DEG list
+  </a>
+
+
   </div>
   <!-- <div id="tmp-place-holder" style="min-height: 30vw;"></div> -->
 </body>

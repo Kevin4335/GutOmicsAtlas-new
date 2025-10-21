@@ -30,5 +30,30 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function updateRegionImages() {
+        const age = getAgeFromUrl();
+
+        const regionSmall = document.getElementById('region-small');
+        const regionLarge = document.getElementById('region-large');
+
+        if (regionSmall && regionSmall.hasAttribute('data-adult') && regionSmall.hasAttribute('data-fetal')) {
+            regionSmall.src = regionSmall.getAttribute('data-' + age);
+        }
+
+        if (regionLarge && regionLarge.hasAttribute('data-adult') && regionLarge.hasAttribute('data-fetal')) {
+            regionLarge.src = regionLarge.getAttribute('data-' + age);
+        }
+    }
+
+    function updateRegionDegLink() {
+        const age = getAgeFromUrl();
+        const degLink = document.getElementById('region-xls');
+        if (degLink && degLink.hasAttribute('data-adult') && degLink.hasAttribute('data-fetal')) {
+            degLink.href = degLink.getAttribute('data-' + age);
+        }
+    }
+
+    updateRegionDegLink();
+    updateRegionImages();
     updateAgeBanner();
 });

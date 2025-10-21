@@ -214,20 +214,31 @@ window.addEventListener('DOMContentLoaded', function () {
             document.getElementById('error-msg').innerHTML = "Email is not valid";
             return;
         }
+
         input = GLB_GENES_FORMATTED_TO_ORIGIN[input_formatted];
         document.getElementById('error-msg').innerHTML = "";
+
+        // --- NEW: get sample type (fetal or adult) ---
+        var sampleType = '';
+        if (document.getElementById('fetal-btn').checked) sampleType = 'fetal';
+        if (document.getElementById('adult-btn').checked) sampleType = 'adult';
+
         var data = {
             function: "scrna",
-            type: GLB_SELECTED.toLowerCase(),
+            type: GLB_SELECTED.toLowerCase(),  // "ep" or "eecs"
+            sample_type: sampleType,           // "fetal" or "adult"
             gene: input,
+            pdf_path: "combined_plot.pdf",     // or generate dynamically if needed
             email: document.getElementById('email-input').value
-        }
+        };
+
         data = JSON.stringify(data);
         data = stringToHex(data);
         var url = `${GLB_API_SERVER_URL}/${data}`;
         var request = new XMLHttpRequest();
         request.open('GET', url, true);
         request.timeout = 180000;
+
         request.onload = function() {
             if (request.status === 202) {
                 document.getElementById('main-img-container').className = '';
@@ -248,17 +259,19 @@ window.addEventListener('DOMContentLoaded', function () {
             document.getElementById('error').innerHTML = "Error: " + error_message;
             document.getElementById('main-img-container').className = '';
             document.getElementById('main-img-container').classList.add('error');
-        }
+        };
+
         request.onerror = function() {
             document.getElementById('error').innerHTML = "Network error";
             document.getElementById('main-img-container').className = '';
             document.getElementById('main-img-container').classList.add('error');
-        }
+        };
         request.ontimeout = function() {
             document.getElementById('error').innerHTML = "Request timeout";
             document.getElementById('main-img-container').className = '';
             document.getElementById('main-img-container').classList.add('error');
-        }
+        };
+
         request.send();
         document.getElementById('whole-img-container').classList.remove('init');
         document.getElementById('whole-img-container').classList.add('generated');

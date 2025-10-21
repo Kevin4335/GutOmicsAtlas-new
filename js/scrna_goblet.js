@@ -21,6 +21,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return 'adult'; // Default to adult if not specified
     }
 
+    function updateGobletLeftImage() {
+        const age = getAgeFromUrl();
+        var gobletLeft = document.getElementById('goblet-left');
+        if (gobletLeft && gobletLeft.hasAttribute('data-adult') && gobletLeft.hasAttribute('data-fetal')) {
+            gobletLeft.src = gobletLeft.getAttribute('data-' + age);
+        }
+    }
+
+
     function updateGobletRightImage() {
         const age = getAgeFromUrl();
         var gobletRight = document.getElementById('goblet-right');
@@ -39,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    updateGobletLeftImage();
     updateGobletRightImage();
     updateAgeBanner();
 });
