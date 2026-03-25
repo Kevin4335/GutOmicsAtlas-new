@@ -135,10 +135,19 @@ function dropdownLinkStyle(active: boolean): CSSProperties {
   }
 }
 
+function getHoverBg(active: boolean) {
+  return active ? 'var(--accent-light)' : 'var(--surface2)'
+}
+
 function isHashActive(to: string, pathname: string, hash: string) {
   const [path, frag] = to.split('#')
   if (path !== pathname || !frag) return false
   return hash === `#${frag}`
+}
+
+function isPathInGroup(to: string, pathname: string) {
+  const [path] = to.split('#')
+  return pathname === path || pathname.startsWith(`${path}/`)
 }
 
 function Dropdown({
@@ -150,6 +159,7 @@ function Dropdown({
 }) {
   const [open, setOpen] = useState(false)
   const { pathname, hash } = useLocation()
+  const groupActive = items.some((item) => isPathInGroup(item.to, pathname))
 
   return (
     <div
@@ -166,17 +176,17 @@ function Dropdown({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 5,
-          color: open ? 'var(--text)' : 'var(--muted)',
+          color: groupActive ? 'var(--accent)' : 'var(--muted)',
           textDecoration: 'none',
           fontSize: '0.85rem',
-          fontWeight: 500,
+          fontWeight: groupActive ? 600 : 500,
           padding: '7px 14px',
           borderRadius: 6,
           transition: 'all 0.15s',
           cursor: 'pointer',
           fontFamily: "'Montserrat', sans-serif",
           whiteSpace: 'nowrap',
-          background: open ? 'var(--surface2)' : 'transparent',
+          background: open ? getHoverBg(groupActive) : groupActive ? 'var(--accent-light)' : 'transparent',
         }}
       >
         {label}
@@ -222,13 +232,11 @@ function Dropdown({
                   onMouseEnter={(e) => {
                     if (!active) {
                       e.currentTarget.style.background = 'var(--surface2)'
-                      e.currentTarget.style.color = 'var(--text)'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!active) {
                       e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = 'var(--muted)'
                     }
                   }}
                 >
@@ -262,28 +270,48 @@ export default function NavBar() {
       </NavLink>
 
       <nav style={nav} aria-label="Main">
-        <NavLink to="/" end style={({ isActive }) => linkBase(isActive)}>
+        <NavLink
+          to="/"
+          end
+          style={({ isActive }) => linkBase(isActive)}
+          onMouseEnter={(e) => {
+            const active = e.currentTarget.getAttribute('aria-current') === 'page'
+            e.currentTarget.style.background = getHoverBg(active)
+          }}
+          onMouseLeave={(e) => {
+            const active = e.currentTarget.getAttribute('aria-current') === 'page'
+            e.currentTarget.style.background = active ? 'var(--accent-light)' : 'transparent'
+          }}
+        >
           Home
         </NavLink>
-        <NavLink to="/chat" style={({ isActive }) => linkBase(isActive)}>
+        <NavLink
+          to="/chat"
+          style={({ isActive }) => linkBase(isActive)}
+          onMouseEnter={(e) => {
+            const active = e.currentTarget.getAttribute('aria-current') === 'page'
+            e.currentTarget.style.background = getHoverBg(active)
+          }}
+          onMouseLeave={(e) => {
+            const active = e.currentTarget.getAttribute('aria-current') === 'page'
+            e.currentTarget.style.background = active ? 'var(--accent-light)' : 'transparent'
+          }}
+        >
           Chat with AI
         </NavLink>
 
         <Dropdown
           label="Single Cell Modality"
           items={[
-            { to: '/scrna#scrna', label: 'scRNA' },
-            { to: '/scrna#snatac', label: 'snATAC' },
+            { to: '/scrna', label: 'scRNA' },
+            { to: '/snatac', label: 'snATAC' },
           ]}
         />
         <Dropdown
           label="Spatial Modality"
           items={[
             { to: '/spatial-metabolomics#metabolomics', label: 'Spatial Metabolomics' },
-            {
-              to: '/spatial-metabolomics#transcriptomics',
-              label: 'Spatial Transcriptomics',
-            },
+            { to: '/spatial-transcriptomics', label: 'Spatial Transcriptomics' },
           ]}
         />
 
