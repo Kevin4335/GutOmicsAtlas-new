@@ -1,0 +1,38 @@
+:root {
+  /* Design tokens (ported from the legacy homepage styles.css) */
+  --bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface2: #f0f3f9;
+  --border: #e2e7f0;
+  --border2: #cdd4e4;
+  --navy: #111111;
+  --navy2: #333333;
+  --text: #1e2d45;
+  --muted: #64748b;
+  --light: #94a3b8;
+  --accent: #de3341;
+  --accent-light: #fff1f2;
+  --accent-border: #fecaca;
+
+  /* Compatibility aliases for existing template CSS */
+  --accent-bg: var(--accent-light);
+  --text-h: var(--navy2);
+  --social-bg: var(--surface2);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px,
+    rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --green: #059669;
+  --green-light: #ecfdf5;
+  --amber: #d97706;
+  --amber-light: #fffbeb;
+  --orange: #ea580c;
+  --orange-light: #fff7ed;
+  --red: #dc2626;
+  --red-light: #fef2f2;
+  --teal: #0d9488;
+  --teal-light: #f0fdfa;
+  --purple: #7c3aed;
+  --purple-light: #f5f3ff;
+}
+

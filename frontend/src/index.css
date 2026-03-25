@@ -1,0 +1,65 @@
+@import './theme/tokens.css';
+
+/* Minimal global base rules (legacy homepage uses mostly component-level CSS). */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: clamp(2.2rem, 4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  color: var(--navy);
+  margin-bottom: 20px;
+}
+
+h2 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: #f4f3ec;
+  border-radius: 4px;
+  color: var(--navy);
+  display: inline-flex;
+}
+
+/* Keep some sane layout defaults while pages get rebuilt */
+#root {
+  min-height: 100svh;
+}
+
