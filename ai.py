@@ -287,10 +287,10 @@ def generate_messgae(resp: str) -> str:
                 messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
             elif (msg['name'] == 'spatial_transcriptomics'):
                 gene = st_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                messages.append({'type': 'image', 'content': f'http://128.84.40.69/data/st/{gene}.png'})
+                messages.append({'type': 'image', 'content': f'http://128.84.40.118/data/st/{gene}.png'})
             elif (msg['name'] == 'spatial_metabolomics'):
                 index = spatial_meta.index(msg['parameters'][0]) + 1
-                messages.append({'type': 'image', 'content': f'http://128.84.40.69/data/sm/Slide{index}.png'})
+                messages.append({'type': 'image', 'content': f'http://128.84.40.118/data/sm/Slide{index}.png'})
             elif (msg['name'] == 'static_images'):
                 with open(f'./imgs/ai/{msg["parameters"][0]}.png', 'rb') as f:
                     png_bytes = f.read()

@@ -27,6 +27,7 @@ const ST_STYLE_TAG = `
   width: 80%;
   min-width: 0;
   box-sizing: border-box;
+  flex: 1;
 }
 .st-tx-pvs {
   display: grid;
@@ -177,7 +178,7 @@ const ST_STYLE_TAG = `
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 120px;
+  min-height: 260px;
   color: #9ca3af;
   font-size: 0.78rem;
   text-align: center;

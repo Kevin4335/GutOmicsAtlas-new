@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { useRef, useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { fetchSnAtacImage } from '../rServers'
 
 type CellType = 'all' | 'epithelial'
 type SnatacTab = 'overview' | 'result'
@@ -50,19 +51,9 @@ const SNATAC_STYLE_TAG = `
 }
 `
 
-function toHexUtf8(str: string) {
-  const bytes = new TextEncoder().encode(str)
-  let hex = ''
-  for (const b of bytes) hex += b.toString(16).padStart(2, '0')
-  return hex
-}
+// hex helper moved to rServers.ts (direct R server calls)
 
-function getStringField(obj: unknown, key: 'img' | 'error'): string | null {
-  if (!obj || typeof obj !== 'object') return null
-  if (!(key in obj)) return null
-  const v = (obj as Record<string, unknown>)[key]
-  return typeof v === 'string' ? v : v == null ? null : String(v)
-}
+// (legacy /api response helper removed)
 
 const shell: CSSProperties = {
   minHeight: '100vh',
@@ -253,42 +244,18 @@ export default function Snatac() {
     inflight.current = ac
     setQueryStatus('loading')
 
-    const payload = {
-      function: 'snatac',
-      type: cellType === 'all' ? 'eecs' : 'ep',
-      gene: loci,
-      pdf_path: 'combined_plot.pdf',
-    }
-
-    const hex = toHexUtf8(JSON.stringify(payload))
-    const url = `/api/${hex}`
-
     try {
-      const res = await fetch(url, { method: 'GET', signal: ac.signal })
-      if (res.status === 202) {
-        setQueryStatus('queued')
-        setQueuedMsg('Your request is being processed. Please try again shortly.')
-        return
-      }
-      const text = await res.text()
-      const json = text ? (JSON.parse(text) as unknown) : null
-      if (!res.ok) {
-        setQueryStatus('error')
-        setError(getStringField(json, 'error') ?? `HTTP ${res.status}`)
-        return
-      }
-      const img = getStringField(json, 'img') ?? ''
-      if (!img) {
-        setQueryStatus('error')
-        setError('No image returned from server.')
-        return
-      }
-      setImgDataUrl(`data:image/png;base64,${img}`)
+      const url = await fetchSnAtacImage({
+        loci,
+        cellType: cellType === 'all' ? 'all' : 'epithelial',
+        signal: ac.signal,
+      })
+      setImgDataUrl(url)
       setQueryStatus('success')
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       setQueryStatus('error')
-      setError('Network error.')
+      setError(e instanceof Error ? e.message : 'Network error.')
     } finally {
       if (inflight.current === ac) inflight.current = null
     }

@@ -19,7 +19,7 @@ def R_call(id: int, data: dict) -> None:
     url = base_url + '/' + json_data
     response = http(url, Timeout=3600000, Decode=False, Retry=False)
     if (response['status'] < 0):
-        return (False, b'')
+        return (False, f"R backend unreachable at {base_url} (status={response['status']}).".encode('utf-8'))
     if (response['code'] == 200):
         return (True, b'')
     if (response['code'] == 500):

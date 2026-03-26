@@ -1,22 +1,45 @@
 require(patchwork)
 require(Seurat)
 require(ggplot2)
-library(httpuv) # jtc
-library(jsonlite) # jtc
-merged.gut<-readRDS("./integrated_iter_2_seurat.rds")
-scRNA<-function(genes, pdf_path){
-  p1<-FeaturePlot(merged.gut, features=genes, reduction="umap.integrated", raster=TRUE)
-  p2<-VlnPlot(merged.gut, features=genes)
-  combined_plot<-p1+p2+plot_layout(ncol=2)
-  ggsave(pdf_path, plot = combined_plot, width = 15, height = 7)
+library(httpuv)
+library(jsonlite)
+
+# ================== Load datasets ==================
+# Use absolute path inside the container (mounted from host /home/ubuntu/website/data).
+# fetal.epi <- readRDS("/root/data/REVISED_DATA/scRNA/Fetal/Epithelialcells/fetalsample.rds")
+# adult.epi <- readRDS("/root/data/REVISED_DATA/scRNA/Adult/Epithelialcells/adultintestine.rds")
+
+fetal.epi <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Fetal/Epithelialcells/fetalsample.rds")
+adult.epi <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Adult/Epithelialcells/adultintestine.rds")
+
+new.cluster.ids <- c("Stem cells","TA cells","Enterocytes","Goblet cells", "EECs","Paneth cells")
+names(new.cluster.ids) <- levels(fetal.epi)
+fetal.epi <- RenameIdents(fetal.epi, new.cluster.ids)
+
+# ================== Plotting function ==================
+scRNA <- function(obj, genes, pdf_path) {
+  p1 <- FeaturePlot(obj, features = genes, reduction = "umap.integrated", raster = TRUE)
+  p3 <- p1 + labs(title = "", x = "UMAP_1", y = "UMAP_2") +
+    theme(
+      axis.text = element_text(size = 32),
+      axis.title = element_text(size = 38),
+      legend.text = element_text(size = 24),
+      legend.title = element_text(size = 32)
+    )
+
+  p2 <- VlnPlot(obj, features = genes)
+  p4 <- p2 + labs(title = "") + theme(
+    axis.text = element_text(size = 32),
+    axis.title = element_text(size = 38),
+    legend.text = element_text(size = 32),
+    legend.title = element_text(size = 32)
+  )
+
+  combined_plot <- p3 + p4 + plot_layout(ncol = 2)
+  ggsave(pdf_path, plot = combined_plot, width = 30, height = 15)
 }
 
-# scRNA("CHGA")
-
-
-
-# ===============================================
-
+# ================== Helper ==================
 hex_to_string <- function(hex_str) {
   hex_split <- strsplit(hex_str, "(?<=..)", perl = TRUE)[[1]]
   raw_vec <- as.raw(as.hexmode(hex_split))
@@ -24,36 +47,41 @@ hex_to_string <- function(hex_str) {
   return(result_str)
 }
 
-
+# ================== HTTP Server ==================
 app <- list(
   call = function(req) {
     url <- req$PATH_INFO
     json_data <- hex_to_string(substr(url, 2, nchar(url)))
     data <- fromJSON(json_data)
 
-    f <- data$f
-    if(f == 25){
-      cat('scRNA', "\n")
-      scRNA(data$p1, data$p2)
+    # Expect: { "function": "scrna", "sample_type": "fetal"|"adult", "p1": "GENE", "p2": "out.pdf" }
+    if (!is.null(data$sample_type)) {
+      if (data$sample_type == "fetal") {
+        cat("Running fetal epithelial scRNA\n")
+        scRNA(fetal.epi, data$p1, data$p2)
+      } else if (data$sample_type == "adult") {
+        cat("Running adult epithelial scRNA\n")
+        scRNA(adult.epi, data$p1, data$p2)
+      } else {
+        stop("Invalid sample_type: must be 'fetal' or 'adult'")
+      }
     }
-    response_body <- paste0("finished")
+
+    response_body <- "finished"
     return(list(
       status = 200L,
       headers = list(
-        'Content-Length' = '8'
+        'Content-Length' = as.character(nchar(response_body))
       ),
       body = response_body
     ))
   }
 )
 
-
 server <- startServer("0.0.0.0", 9025, app)
 cat("Server started on http://localhost:9025\n")
-
 
 while(TRUE) {
   service()
   Sys.sleep(0.001)
 }
-

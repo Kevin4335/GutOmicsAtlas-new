@@ -71,17 +71,6 @@ function slideSpatialUrl(slideIndex: number): string {
   return root ? `${root}${path}` : path
 }
 
-/** Second panel; override template with `VITE_SPATIAL_SM_QUANT_TEMPLATE` (use `{n}` for slide index). */
-function slideQuantUrl(slideIndex: number): string {
-  const root = smDataRoot()
-  const tpl =
-    (import.meta.env.VITE_SPATIAL_SM_QUANT_TEMPLATE as string | undefined)?.replace('{n}', String(slideIndex)) ??
-    `/sm/Slide${slideIndex}_quant.png`
-  if (tpl.startsWith('http://') || tpl.startsWith('https://')) return tpl
-  const path = tpl.startsWith('/') ? tpl : `/${tpl}`
-  return root ? `${root}${path}` : path
-}
-
 function zoomRatio(level: number) {
   return Math.pow(GLB_ZOOM_RATIO, level)
 }
@@ -634,18 +623,7 @@ export default function SpatialMetabolomics() {
                               fallbackLabel="Spatial distribution"
                             />
                           </div>
-                          <div style={{ borderTop: '1px solid var(--border)' }}>
-                            <div className="sm-chart-card-header">
-                              <div className="sm-chart-title">
-                                Spatial Metabolomics · {selectedRow.name} · Quantification
-                              </div>
-                            </div>
-                            <DetailFigure
-                              src={slideQuantUrl(selectedRow.slideIndex)}
-                              alt={`Quantification · ${selectedRow.name}`}
-                              fallbackLabel="Quantification"
-                            />
-                          </div>
+                          
                         </>
                       )}
                     </div>

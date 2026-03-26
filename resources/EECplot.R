@@ -1,28 +1,40 @@
 require(patchwork)
 require(Seurat)
 require(ggplot2)
-library(httpuv) # jtc
-library(jsonlite) # jtc
-merged.gut<-readRDS("./EEChormoneassignmentnew.rds")
-#write.csv(Idents(merged.gut), "EECidentity.csv")
-#new.cluster.ids <- c("Endocrine Progenitors", "D cells", "N cells", "I cells", "M/X/A cells",
-#                     "L cells","K cells","Enterochromaffin cells")
-#names(new.cluster.ids) <- levels(merged.gut)
-#merged.gut <- RenameIdents(merged.gut, new.cluster.ids)
-#saveRDS(merged.gut, "EEChormoneassignmentnew.rds")
-scRNAEEC<-function(genes, pdf_path){
-  p1<-FeaturePlot(merged.gut, features=genes, reduction="umap")
-  p2<-VlnPlot(merged.gut, features=genes)
-  combined_plot<-p1+p2+plot_layout(ncol=2)
-  ggsave(pdf_path, plot = combined_plot, width = 15, height = 7)
+library(httpuv) 
+library(jsonlite)
+
+# ================== Load datasets ==================
+# Use absolute path inside the container (mounted from host /home/ubuntu/website/data).
+# fetal.eec <- readRDS("/root/data/REVISED_DATA/scRNA/Fetal/EECs/eecupdated.rds")
+# adult.eec <- readRDS("/root/data/REVISED_DATA/scRNA/Adult/EECs/adultEECs.rds")
+
+fetal.eec <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Fetal/EECs/eecupdated.rds")
+adult.eec <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Adult/EECs/adultEECs.rds")
+
+# ================== Plotting function ==================
+scRNAEEC <- function(obj, genes, pdf_path) {
+  p1 <- FeaturePlot(obj, features = genes, reduction = "umap")
+  p3 <- p1 + labs(title = "", x = "UMAP_1", y = "UMAP_2") + theme(
+    axis.text = element_text(size = 32),
+    axis.title = element_text(size = 38),
+    legend.text = element_text(size = 24),
+    legend.title = element_text(size = 32)
+  )
+  
+  p2 <- VlnPlot(obj, features = genes)
+  p4 <- p2 + labs(title = "") + theme(
+    axis.text = element_text(size = 32),
+    axis.title = element_text(size = 38),
+    legend.text = element_text(size = 32),
+    legend.title = element_text(size = 32)
+  )
+  
+  combined_plot <- p3 + p4 + plot_layout(ncol = 2)
+  ggsave(pdf_path, plot = combined_plot, width = 30, height = 15)
 }
 
-# scRNAEEC("GIP")
-
-
-
-# ===============================================
-
+# ================== Helper ==================
 hex_to_string <- function(hex_str) {
   hex_split <- strsplit(hex_str, "(?<=..)", perl = TRUE)[[1]]
   raw_vec <- as.raw(as.hexmode(hex_split))
@@ -30,36 +42,41 @@ hex_to_string <- function(hex_str) {
   return(result_str)
 }
 
-
+# ================== HTTP Server ==================
 app <- list(
   call = function(req) {
     url <- req$PATH_INFO
     json_data <- hex_to_string(substr(url, 2, nchar(url)))
     data <- fromJSON(json_data)
-
-    f <- data$f
-    if(f == 24){
-      cat('scRNAEEC', "\n")
-      scRNAEEC(data$p1, data$p2)
+    
+    # Expect JSON: { "sample_type": "fetal" or "adult", "p1": "GENE", "p2": "output.pdf" }
+    if (!is.null(data$sample_type)) {
+      if (data$sample_type == "fetal") {
+        cat("Running fetal scRNAEEC\n")
+        scRNAEEC(fetal.eec, data$p1, data$p2)
+      } else if (data$sample_type == "adult") {
+        cat("Running adult scRNAEEC\n")
+        scRNAEEC(adult.eec, data$p1, data$p2)
+      } else {
+        stop("Invalid sample_type: must be 'fetal' or 'adult'")
+      }
     }
-    response_body <- paste0("finished")
+    
+    response_body <- "finished"
     return(list(
       status = 200L,
       headers = list(
-        'Content-Length' = '8'
+        'Content-Length' = as.character(nchar(response_body))
       ),
       body = response_body
     ))
   }
 )
 
-
 server <- startServer("0.0.0.0", 9024, app)
 cat("Server started on http://localhost:9024\n")
-
 
 while(TRUE) {
   service()
   Sys.sleep(0.001)
 }
-

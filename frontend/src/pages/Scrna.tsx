@@ -4,8 +4,7 @@ import { useLocation } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { SCRNA_GENES } from '../data/scrnaGenes'
-
-const SCRNA_EMAIL_RE = /^[a-zA-Z0-9_.+-]+@([a-zA-Z0-9-]+\.)+[a-zA-Z]+$/
+import { fetchScRnaImage } from '../rServers'
 
 type CellType = 'epithelial' | 'enteroendocrine'
 type Stage = 'fetal' | 'adult'
@@ -113,19 +112,7 @@ const SCRNA_STYLE_TAG = `
 .scrna-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
 `
 
-function toHexUtf8(str: string) {
-  const bytes = new TextEncoder().encode(str)
-  let hex = ''
-  for (const b of bytes) hex += b.toString(16).padStart(2, '0')
-  return hex
-}
-
-function getStringField(obj: unknown, key: 'img' | 'error'): string | null {
-  if (!obj || typeof obj !== 'object') return null
-  if (!(key in obj)) return null
-  const v = (obj as Record<string, unknown>)[key]
-  return typeof v === 'string' ? v : v == null ? null : String(v)
-}
+// hex helper moved to rServers.ts (direct R server calls)
 
 function chartTitle(mod: string, cellType: CellType, stage: Stage, section: string, chart: string) {
   const ct = cellType === 'epithelial' ? 'Epithelial' : 'Enteroendocrine'
@@ -392,11 +379,7 @@ export default function Scrna() {
       return
     }
 
-    const em = email.trim()
-    if (cellType === 'epithelial' && (em === '' || !SCRNA_EMAIL_RE.test(em))) {
-      setError('Email is not valid')
-      return
-    }
+    // Direct R server mode: no email queueing (renders image immediately).
 
     inflight.current?.abort()
     const ac = new AbortController()
@@ -404,46 +387,19 @@ export default function Scrna() {
 
     setQueryStatus('loading')
 
-    // Legacy API expects hex(JSON) appended to /api/<hex>
-    const payload = {
-      function: 'scrna',
-      type: cellType === 'epithelial' ? 'ep' : 'eecs',
-      sample_type: stage,
-      gene: canonical,
-      pdf_path: 'combined_plot.pdf',
-      email: em,
-    }
-
-    const hex = toHexUtf8(JSON.stringify(payload))
-    const url = `/api/${hex}`
-
     try {
-      const res = await fetch(url, { method: 'GET', signal: ac.signal })
-      if (res.status === 202) {
-        setQueryStatus('queued')
-        setQueuedMsg('Submit success successfully, please check your email later.')
-        return
-      }
-      const text = await res.text()
-      const json = text ? (JSON.parse(text) as unknown) : null
-      if (!res.ok) {
-        const msg = getStringField(json, 'error') ?? `HTTP ${res.status}`
-        setQueryStatus('error')
-        setError(msg)
-        return
-      }
-      const img = getStringField(json, 'img') ?? ''
-      if (!img) {
-        setQueryStatus('error')
-        setError('No image returned from server.')
-        return
-      }
-      setImgDataUrl(`data:image/png;base64,${img}`)
+      const url = await fetchScRnaImage({
+        gene: canonical,
+        sampleType: stage,
+        cellType: cellType === 'epithelial' ? 'epithelial' : 'enteroendocrine',
+        signal: ac.signal,
+      })
+      setImgDataUrl(url)
       setQueryStatus('success')
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       setQueryStatus('error')
-      setError('Network error.')
+      setError(e instanceof Error ? e.message : 'Network error.')
     } finally {
       if (inflight.current === ac) inflight.current = null
     }

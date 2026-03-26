@@ -40,8 +40,9 @@ type BackendResponse = {
 // ----------------------
 const TEST_MODE = false;
 
-// API base from root .env (VITE_API_BASE). Empty = same origin; set e.g. http://localhost:8000 for local server.
-const BASEURL = import.meta.env.VITE_API_BASE ?? "";
+// API base from .env (VITE_API_BASE). Default to the deployed server so running the UI from a laptop
+// doesn't accidentally call the laptop's own localhost.
+const BASEURL = import.meta.env.VITE_API_BASE ?? "http://128.84.40.118";
 const AI_CHAT_URL = `${BASEURL}/chat`;
 
 const LS_OPENAI = "openai-history";
@@ -159,7 +160,9 @@ export default function AIChat() {
         });
 
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          const body = await res.text().catch(() => "");
+          const suffix = body ? `: ${body}` : "";
+          throw new Error(`HTTP ${res.status}${suffix}`);
         }
 
         data = (await res.json()) as BackendResponse;
