@@ -5,7 +5,6 @@ import json
 from myBasics import binToBase64
 from mySecrets import hexToStr
 import os
-import sys
 from queue import Queue
 from R_http import R_call
 from utils import *
@@ -17,13 +16,9 @@ from ai import process_ai_chat
 from mySecrets import hexToStr
 from secrets import token_hex
 from my_email import send_email
-import urllib.request
-import urllib.error
 
-
-# true: production caching. false: bind :9037 (local dev).
-# Override: ATLAS_IS_SERVER=false python server.py
-IS_SERVER = os.environ.get("ATLAS_IS_SERVER", "true").lower() in ("1", "true", "yes")
+IS_SERVER = False
+IS_SERVER = True
 
 
 NO_CACHE = 100000001
@@ -38,7 +33,7 @@ if (IS_SERVER):
 
 USE_BUILT = False
 
-# React frontend build (Vite). Server serves from here for /, static files under dist, and SPA fallback.
+# React frontend build (Vite). Server serves from here for /, /index.html, /assets/*, and SPA fallback.
 FRONTEND_DIST = "frontend/dist"
 
 # Legacy assets (css, js, imgs) only needed for /html/*. Omit when dirs missing; React is primary.
@@ -100,21 +95,12 @@ class Request(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split('?')[0]
-        if path.startswith('/r/'):
-            return self.process_r_proxy(path)
         # React SPA: / and /index.html
         if path == '/' or path == '/index.html':
             return self.serve_react_index()
         if (path.startswith('/html/')):
             return self.process_html(path)
         if (path.startswith('/imgs/')):
-            # Prefer the React build's public assets (frontend/dist/imgs/*).
-            rel = path.lstrip("/")
-            if rel and ".." not in rel:
-                fp = os.path.join(FRONTEND_DIST, rel)
-                if os.path.isfile(fp):
-                    return self.serve_react_static(path)
-            # Fallback: legacy backend-served images (./imgs/*, typically *no_embed* downloads)
             return self.process_img(path)
         if (path.startswith('/api/')):
             return self.process_api()
@@ -122,73 +108,15 @@ class Request(BaseHTTPRequestHandler):
             return self.process_data()
         if(path.startswith('/generated/')):
             return self.process_generated()
-        # React uses /st/… and /sm/…; data handler expects /data/st/… and /data/sm/…
-        if path.startswith('/st/') or path.startswith('/sm/'):
-            self.path = '/data' + path
-            return self.process_data()
         if (path == '/robots.txt'):
             return self.process_robots_txt()
         if (path == '/sitemap.xml'):
             return self.process_sitemap_xml()
-        # Any file Vite placed under dist (e.g. /assets/*, /imgs/*, /favicon.svg, /icons.svg)
-        rel = path.lstrip("/")
-        if rel and ".." not in rel:
-            fp = os.path.join(FRONTEND_DIST, rel)
-            if os.path.isfile(fp):
-                return self.serve_react_static(path)
-        # SPA fallback for client-side routes: /chat, /scrna, etc.
+        # React static: /assets/*, /vite.svg, /favicon.ico, /heart_logo_1.png
+        if path.startswith('/assets/') or path in ('/vite.svg', '/favicon.ico', '/heart_logo_1.png'):
+            return self.serve_react_static(path)
+        # SPA fallback for client-side routes: /chat, /spatial, /multiomics, /scrna, etc.
         return self.serve_react_index()
-
-    def process_r_proxy(self, path: str) -> None:
-        """
-        Proxy to local R httpuv servers to avoid browser CORS/mixed-content issues.
-        Route: /r/<port>/<hex>
-        """
-        # Expected: /r/9024/<hex>
-        parts = path.split('/')
-        if len(parts) < 4:
-            return self.process_404()
-        try:
-            port = int(parts[2])
-        except Exception:
-            return self.process_404()
-        if port not in (9024, 9025, 9026, 9027):
-            return self.process_404()
-        hex_path = '/'.join(parts[3:])
-        if '..' in hex_path:
-            return self.process_404()
-
-        url = f'http://127.0.0.1:{port}/{hex_path}'
-        try:
-            with urllib.request.urlopen(url, timeout=3600) as resp:
-                body = resp.read()
-                code = resp.getcode()
-                content_type = resp.headers.get('Content-Type', 'text/plain')
-        except urllib.error.HTTPError as e:
-            code = e.code
-            body = e.read()
-            content_type = e.headers.get('Content-Type', 'text/plain')
-        except Exception as e:
-            msg = f'R proxy error: {e}'.encode('utf-8')
-            self.send_response(502)
-            self.send_header('Connection', 'keep-alive')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Content-Type', 'text/plain; charset=utf-8')
-            self.send_header('Content-Length', len(msg))
-            self.end_headers()
-            self.wfile.write(msg)
-            self.wfile.flush()
-            return
-
-        self.send_response(code)
-        self.send_header('Connection', 'keep-alive')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', len(body))
-        self.end_headers()
-        self.wfile.write(body)
-        self.wfile.flush()
-        return
 
     def do_POST(self) -> None:
         path = self.path
@@ -289,28 +217,14 @@ class Request(BaseHTTPRequestHandler):
         path = path[6:]
         assert('..' not in path)
         data = b''
-        try:
-            if (path.startswith('st/')):
-                path = path[3:]
-                with open(f'../data/Xenium/Xenium figures/{path}', 'rb') as f:
-                    data = f.read()
-            if (path.startswith('sm/')):
-                path = path[3:]
-                base = '../data/Spatial Metabolomics/Metaboliteimages/'
-                fp = base + path
-                try:
-                    with open(fp, 'rb') as f:
-                        data = f.read()
-                except FileNotFoundError:
-                    # Some deployments only have Slide{n}.png (no _quant variant)
-                    if path.endswith('_quant.png'):
-                        fp2 = base + path.replace('_quant.png', '.png')
-                        with open(fp2, 'rb') as f:
-                            data = f.read()
-                    else:
-                        raise
-        except FileNotFoundError:
-            return self.process_404()
+        if (path.startswith('st/')):
+            path = path[3:]
+            with open(f'../data/Xenium/Xenium figures/{path}', 'rb') as f:
+                data = f.read()
+        if (path.startswith('sm/')):
+            path = path[3:]
+            with open(f'../data/Spatial Metabolomics/Metaboliteimages/{path}', 'rb') as f:
+                data = f.read()
         self.send_response(200)
         self.send_header('Connection', 'keep-alive')
         self.send_header('Content-Type', 'image/png')
@@ -441,7 +355,7 @@ class Request(BaseHTTPRequestHandler):
     
     
     def serve_react_index(self) -> None:
-        """Serve the React SPA index.html from the Vite build."""
+        """Serve the React SPA index.html. Fall back to /html/home.html if the build is missing."""
         idx = os.path.join(FRONTEND_DIST, "index.html")
         if os.path.isfile(idx):
             with open(idx, "rb") as f:
@@ -474,7 +388,6 @@ class Request(BaseHTTPRequestHandler):
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".gif": "image/gif",
-            ".webp": "image/webp",
             ".svg": "image/svg+xml",
             ".ico": "image/x-icon",
             ".woff": "font/woff",
@@ -504,19 +417,9 @@ class Request(BaseHTTPRequestHandler):
 
 
 pp = 9037
-if IS_SERVER:
-    # Default :80 (needs root). Unprivileged: ATLAS_PORT=8000 or use build-and-serve.sh (sets it).
-    pp = int(os.environ["ATLAS_PORT"]) if os.environ.get("ATLAS_PORT") else 80
-try:
-    server = ThreadingHTTPServer(('0.0.0.0', pp), Request)
-except PermissionError:
-    print(
-        f"Permission denied binding 0.0.0.0:{pp} (ports < 1024 need root on Linux).\n"
-        f"  ATLAS_PORT=8000 python server.py\n"
-        f"  ATLAS_IS_SERVER=false python server.py   # dev, port 9037",
-        file=sys.stderr,
-    )
-    raise
+if(IS_SERVER):
+    pp = 8000
+server = ThreadingHTTPServer(('0.0.0.0', pp), Request)
 start_new_thread(server.serve_forever, ())
 while True:
     sleep(10)
