@@ -19,12 +19,20 @@
     margin-left: 2.5vw;
     width: 95vw;
     justify-content: space-evenly;
+    padding-top: 1vw;
 }
 
 #static-img img, #static-img-2 img {
     height: 90%;
     border-radius:1vw 1vw 1vw 1vw;
     box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#static-img img:hover, #static-img-2 img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 15px rgba(154, 73, 66, 0.3);
 }
 
 #static-img-2 {
@@ -41,6 +49,13 @@
     /* margin-bottom: -5vw !important; */
     border-radius:1vw 1vw 1vw 1vw;
     box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#selected:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 15px rgba(154, 73, 66, 0.3);
 }
 
 #back-main {
@@ -67,8 +82,58 @@
     width: 100%;
     border-radius:1vw 1vw 1vw 1vw;
     box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#selected-right img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(154, 73, 66, 0.3);
 }
 
 body {
     background: linear-gradient(to top, #f0e5e4, rgb(255, 255, 255));
+}
+
+/* Image Zoom Modal */
+.image-modal {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  overflow: auto;
+}
+
+.image-modal.active {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  max-width: 90%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 0.5vw;
+}
+
+.modal-close {
+  position: absolute;
+  top: 20px;
+  right: 40px;
+  color: #f1f1f1;
+  font-size: 40px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+  z-index: 10000;
+}
+
+.modal-close:hover,
+.modal-close:focus {
+  color: #bbb;
 }

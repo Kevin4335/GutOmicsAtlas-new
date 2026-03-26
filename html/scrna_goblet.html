@@ -16,7 +16,6 @@
   <link href="/css/scrna.css" rel="stylesheet">
   <script src="/js/lib.js"></script>
   <script src="/js/nav.js"></script>
-  <script src="/js/scrna.js"></script>
   <!--$jtc.unique.replacer$<link rel="prefetch" href="/html/help.html">
   <link rel="prefetch" href="/html/about.html">$jtc.unique.replacer$-->
 </head>
@@ -41,22 +40,44 @@
     </nav>
   </header>
   <div id="main-container" class="subpage region" style="min-height: 45vw;">
-  <div id="age-banner">Fetal or Adult</div>
-  <!-- The script below updates the age banner based on the URL parameter. -->
+  <!-- Age Toggle -->
+  <div id="age-toggle-container">
+    <button id="fetal-toggle" class="age-toggle">Fetal</button>
+    <span class="toggle-separator">|</span>
+    <button id="adult-toggle" class="age-toggle active">Adult</button>
+  </div>
   <script src="/js/scrna_goblet.js"></script>
-    <p id="subpage-title">Goblet Cells</p>
+  <p id="subpage-title">Goblet Cells</p>
+  
+  <div id="goblet-plots">
     <img
       id="goblet-left"
-      src="/imgs/scrna_adult_epithelial_GobletcellsIMAplot.png"
-      data-adult="/imgs/scrna_adult_epithelial_GobletcellsIMAplot.png"
-      data-fetal="/imgs/scrna_fetal_epithelial_GobletcellsIMAplot.png">
+      src="/imgs/AdultEpithelialGobletcellslMAplot.png"
+      data-adult="/imgs/AdultEpithelialGobletcellslMAplot.png"
+      data-fetal="/imgs/FetalEpithelialGobletcellslMAplot.png"
+      alt="Goblet Cells MA Plot">
     <img id="goblet-right"
-      src="/imgs/Gobletcellsvsepithelialviolinplot.png"
-      data-adult="/imgs/GobletcellsvsepithelialviolinplotAdult.png"
-      data-fetal="/imgs/GobletcellsvsepithelialviolinplotFetal.png">
-    <a id="goblet-xls" class="lib-submit" href="/imgs/goblet_no_embed.xls">Download DEG list</a>
+      src="/imgs/AdultEpithelialGobletcellsvsepithelialviolinplot.png"
+      data-adult="/imgs/AdultEpithelialGobletcellsvsepithelialviolinplot.png"
+      data-fetal="/imgs/FetalEpithelialGobletcellsvsepithelialviolinplot.png"
+      alt="Goblet Cells Violin Plot">
   </div>
-  <!-- <div id="tmp-place-holder" style="min-height: 30vw;"></div> -->
+
+  <a id="goblet-xls"
+    class="lib-submit"
+    href="/imgs/scrna_adult_epithelial_goblet.csv"
+    data-adult="/imgs/scrna_adult_epithelial_goblet.csv"
+    data-fetal="/imgs/scrna_fetal_epithelial_goblet.csv"
+    download>
+    Download DEG list
+  </a>
+  </div>
+  
+  <!-- Image Zoom Modal -->
+  <div id="image-modal" class="image-modal">
+    <span class="modal-close">&times;</span>
+    <img class="modal-content" id="modal-img">
+  </div>
 </body>
 <footer>
   <p>

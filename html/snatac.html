@@ -41,36 +41,11 @@
     </nav>
   </header>
   <div id="main-container">
-    <div class="lib-2-to-1 hidden" id="cell-selection">
-      <label>
-        <input type="radio" name="cell-selection" id="eecs-select">
-        <p>All cell types</p>
-      </label>
-      <label>
-        <input type="radio" name="cell-selection" id="ep-select">
-        <p>Epithelial cells</p>
-      </label>
-    </div>
-    <h1 class="sub-title">Select Cell Type snATAC</h1>
-    <!-- <p class="sub-description">Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
-      Aenean turpis nisl, sollicitudin sit amet laoreet sit amet, 
-      tristique ut sapien. Duis vestibulum congue porta. 
-      Phasellus ac ullamcorper eros, in sollicitudin mi. </p> -->
-    <div class="card-selection">
-      <label class="card" id="left-card" for="eecs-select">
-        <h3>All cell types</h3>
-        <!-- <p>Lorem ipsum dolor sit amet, consectetur</p>
-        <p>Aenean turpis nisl, sollicitudin sit amet</p>
-        <p>Lorem ipsum dolor sit amet, consectetur</p>
-        <p>Aenean turpis nisl, sollicitudin sit amet</p> -->
-      </label>
-      <label class="card" id="right-card" for="ep-select">
-        <h3>Epithelial cells</h3>
-        <!-- <p>Lorem ipsum dolor sit amet, consectetur</p>
-        <p>Aenean turpis nisl, sollicitudin sit amet</p>
-        <p>Lorem ipsum dolor sit amet, consectetur</p>
-        <p>Aenean turpis nisl, sollicitudin sit amet</p> -->
-      </label>
+    <!-- Cell Type Toggle -->
+    <div id="cell-type-toggle-container">
+      <button id="all-toggle" class="cell-type-toggle active">All Cell Types</button>
+      <span class="cell-toggle-separator">|</span>
+      <button id="epithelial-toggle" class="cell-type-toggle">Epithelial</button>
     </div>
     <div id="whole-img-container" class="">
       <div id="main-img-container" class="">  <!-- loading, error, shown -->
@@ -85,19 +60,26 @@
         <img src="/imgs/atac_ep_left_no_embed.png" class="ep" id="ep-left">
         <img src="/imgs/snATACdotplotEpithelial.png" class="ep" id="ep-right">
         <img src="/imgs/atac_all_left_no_embed.png" class="eecs" id="all-left">
-        <img src="/imgs/snATACdotplotEEC.png" class="eecs" id="all-right">
+        <img src="/imgs/snATACdotplotAllCells.png" class="eecs" id="all-right">
       </div>
     </div>
     <div id="input-area" class="">
       <div style="position: relative; width: 100%; height: 100%">
-        <p id="genes-text">Genetic loci:</p>
-        <input type="text" id="gene-input" class="lib-text-single">
+        <div id="input-card">
+          <p id="genes-text">Genetic loci:</p>
+          <input type="text" id="gene-input" class="lib-text-single">
+          <button id="submit-button" class="lib-submit">Submit</button>
+        </div>
         <p id="error-msg"></p>
-        <button id="submit-button" class="lib-submit">Submit</button>
       </div>
     </div>
   </div>
-  <!-- <div id="tmp-place-holder" style="min-height: 30vw;"></div> -->
+  
+  <!-- Image Zoom Modal -->
+  <div id="image-modal" class="image-modal">
+    <span class="modal-close">&times;</span>
+    <img class="modal-content" id="modal-img">
+  </div>
 </body>
 <footer>
   <p>

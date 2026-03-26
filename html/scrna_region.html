@@ -16,7 +16,6 @@
   <link href="/css/scrna.css" rel="stylesheet">
   <script src="/js/lib.js"></script>
   <script src="/js/nav.js"></script>
-  <script src="/js/scrna.js"></script>
   <!--$jtc.unique.replacer$<link rel="prefetch" href="/html/help.html">
   <link rel="prefetch" href="/html/about.html">$jtc.unique.replacer$-->
 </head>
@@ -41,26 +40,29 @@
     </nav>
   </header>
   <div id="main-container" class="subpage region" style="min-height: 50vw;">
-  <div id="age-banner">Fetal or Adult</div>
-  <!-- The script below updates the age banner based on the URL parameter. -->
+  <!-- Age Toggle -->
+  <div id="age-toggle-container">
+    <button id="fetal-toggle" class="age-toggle">Fetal</button>
+    <span class="toggle-separator">|</span>
+    <button id="adult-toggle" class="age-toggle active">Adult</button>
+  </div>
   <script src="/js/scrna_region.js"></script>
 
   <p id="subpage-title">Region Comparison</p>
 
-  <!-- Small Intestine -->
-  <div id="region-plots" style="margin-top: 2.5rem;">
+  <div id="region-plots">
     <img
       id="region-small"
-      src="/imgs/scrna_adult_epithelial_regioncomp_SmallintestinalIMAplot.png"
-      data-adult="/imgs/scrna_adult_epithelial_regioncomp_SmallintestinalIMAplot.png"
-      data-fetal="/imgs/scrna_fetal_epithelial_regioncomp_SmallintestinalIMAplot.png"
+      src="/imgs/AdultEpithelialSmallintestinalMAplot.png"
+      data-adult="/imgs/AdultEpithelialSmallintestinalMAplot.png"
+      data-fetal="/imgs/FetalEpithelialSmallintestinalMAplot.png"
       alt="Small Intestine MA Plot"
     >
     <img
       id="region-large"
-      src="/imgs/scrna_adult_epithelial_regioncomp_LargeintestinalIMAplot.png"
-      data-adult="/imgs/scrna_adult_epithelial_regioncomp_LargeintestinalIMAplot.png"
-      data-fetal="/imgs/scrna_fetal_epithelial_regioncomp_LargeintestinalIMAplot.png"
+      src="/imgs/AdultEpithelialLargeintestinalMAplot.png"
+      data-adult="/imgs/AdultEpithelialLargeintestinalMAplot.png"
+      data-fetal="/imgs/FetalEpithelialLargeintestinalMAplot.png"
       alt="Large Intestine MA Plot"
     >
   </div>
@@ -69,13 +71,19 @@
     class="lib-submit"
     href="/imgs/scrna_adult_epithelial_regioncomp.csv"
     data-adult="/imgs/scrna_adult_epithelial_regioncomp.csv"
-    data-fetal="/imgs/scrna_fetal_epithelial_regioncomp.csv">
+    data-fetal="/imgs/scrna_fetal_epithelial_regioncomp.csv"
+    download>
     Download DEG list
   </a>
 
 
   </div>
-  <!-- <div id="tmp-place-holder" style="min-height: 30vw;"></div> -->
+  
+  <!-- Image Zoom Modal -->
+  <div id="image-modal" class="image-modal">
+    <span class="modal-close">&times;</span>
+    <img class="modal-content" id="modal-img">
+  </div>
 </body>
 <footer>
   <p>

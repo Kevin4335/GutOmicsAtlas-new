@@ -225,14 +225,12 @@ class Request(BaseHTTPRequestHandler):
     def process_img(self, path: str) -> None:
         path = path[6:]
         assert('..' not in path)
-        assert('no_embed' in path)
+        assert('no_embed' in path or path.endswith('.csv'))
         with open(f'./imgs/{path}', 'rb') as f:
             data = f.read()
         self.send_response(200)
         self.send_header('Connection', 'keep-alive')
-        if (path.endswith('.xls') == False):
-            self.send_header('Content-Type', 'image/png')
-        else:
+        if path.endswith('.xls'):
             self.send_header('Content-Type', 'application/vnd.ms-excel')
             name = 'excel.xls'
             if ('region' in path):
@@ -240,6 +238,21 @@ class Request(BaseHTTPRequestHandler):
             if ('goblet' in path):
                 name = 'scRNA_goblet_cells.xls'
             self.send_header('Content-Disposition', 'attachment; filename="' + name + '"')
+        elif path.endswith('.csv'):
+            self.send_header('Content-Type', 'text/csv')
+            # Extract the actual filename from the path
+            name = 'data.csv'
+            if 'scrna_adult_epithelial_regioncomp.csv' in path:
+                name = 'scRNA_adult_epithelial_region_comparison.csv'
+            elif 'scrna_fetal_epithelial_regioncomp.csv' in path:
+                name = 'scRNA_fetal_epithelial_region_comparison.csv'
+            elif 'scrna_adult_epithelial_goblet.csv' in path:
+                name = 'scRNA_adult_epithelial_goblet_cells.csv'
+            elif 'scrna_fetal_epithelial_goblet.csv' in path:
+                name = 'scRNA_fetal_epithelial_goblet_cells.csv'
+            self.send_header('Content-Disposition', 'attachment; filename="' + name + '"')
+        else:
+            self.send_header('Content-Type', 'image/png')
         self.send_header('Content-Length', len(data))
         if (BROWSER_CACHE):
             self.send_header('Cache-Control', 'max-age=300')

@@ -10,41 +10,56 @@ var GLB_SELECTED = "";
 
 
 window.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('ep-select').addEventListener('click', function () {
+    // Function to select epithelial cells
+    function selectEpithelial() {
         if (GLB_SELECTED == "EP") {
             return;
         }
         GLB_SELECTED = "EP";
-        document.getElementById('input-area').style.top = '35vw';
+        
+        // Update toggle buttons
+        document.getElementById('epithelial-toggle').classList.add('active');
+        document.getElementById('all-toggle').classList.remove('active');
+        
         document.getElementById('whole-img-container').classList.add('init');
         document.getElementById('whole-img-container').classList.remove('eecs');
         document.getElementById('whole-img-container').classList.add('ep');
         document.getElementById('input-area').classList.add('ep');
         document.getElementById('input-area').classList.remove('eecs');
-        document.getElementById('main-container').style.minHeight = '50vw';
         // clear the generated images
         document.getElementById('whole-img-container').classList.remove('generated');
         document.getElementById('error-msg').innerHTML = "";
         document.getElementById('gene-input').value = "";
-    });
-
-    document.getElementById('eecs-select').addEventListener('click', function () {
+    }
+    
+    // Function to select all cell types (eecs)
+    function selectAllCells() {
         if (GLB_SELECTED == "EECS") {
             return;
         }
         GLB_SELECTED = "EECS";
-        document.getElementById('input-area').style.top = '35vw';
+        
+        // Update toggle buttons
+        document.getElementById('all-toggle').classList.add('active');
+        document.getElementById('epithelial-toggle').classList.remove('active');
+        
         document.getElementById('whole-img-container').classList.add('init');
         document.getElementById('whole-img-container').classList.remove('ep');
         document.getElementById('whole-img-container').classList.add('eecs');
         document.getElementById('input-area').classList.add('eecs');
         document.getElementById('input-area').classList.remove('ep');
-        document.getElementById('main-container').style.minHeight = '50vw';
         // clear the generated images
         document.getElementById('whole-img-container').classList.remove('generated');
         document.getElementById('error-msg').innerHTML = "";
         document.getElementById('gene-input').value = "";
-    });
+    }
+    
+    // Add event listeners for cell type toggles
+    document.getElementById('epithelial-toggle').addEventListener('click', selectEpithelial);
+    document.getElementById('all-toggle').addEventListener('click', selectAllCells);
+    
+    // Initialize with all cells selected on page load
+    selectAllCells();
 
     document.getElementById('submit-button').addEventListener('click', function() {
         var input = document.getElementById('gene-input').value;
@@ -106,26 +121,42 @@ window.addEventListener('DOMContentLoaded', function () {
         document.getElementById('main-img-container').className = '';
         document.getElementById('main-img-container').classList.add('loading');
     });
-});
+    
+    // Image Zoom Modal Functionality
+    const modal = document.getElementById('image-modal');
+    const modalImg = document.getElementById('modal-img');
+    const modalClose = document.querySelector('.modal-close');
+    const staticImages = document.querySelectorAll('#static-imgs img');
 
-window.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('click', () => {
-            document.querySelectorAll('.card-selection').forEach(elem => {
-                elem.classList.add('hidden');
-            });
-
-            document.querySelectorAll('.lib-2-to-1').forEach(elem => {
-                elem.classList.remove('hidden');
-            });
-
-            document.querySelectorAll('.sub-title').forEach(elem => {
-                elem.classList.add('hidden');
-            });
-
-            document.querySelectorAll('.sub-description').forEach(elem => {
-                elem.classList.add('hidden');
-            });
+    // Add click event to all static images
+    staticImages.forEach(img => {
+        img.addEventListener('click', function() {
+            modal.classList.add('active');
+            modalImg.src = this.src;
         });
+    });
+
+    // Close modal on clicking the X button
+    if (modalClose) {
+        modalClose.addEventListener('click', function(e) {
+            e.stopPropagation();
+            modal.classList.remove('active');
+        });
+    }
+
+    // Close modal on clicking the background
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal || e.target === modalImg) {
+                modal.classList.remove('active');
+            }
+        });
+    }
+
+    // Close modal on ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            modal.classList.remove('active');
+        }
     });
 });

@@ -38,4 +38,53 @@ window.addEventListener('DOMContentLoaded', function () {
         document.getElementById('selected-right').style.display = 'none';
         document.getElementById('back-main').style.display = 'none';
     });
+
+    // Image Zoom Modal Functionality
+    const modal = document.getElementById('image-modal');
+    const modalImg = document.getElementById('modal-img');
+    const modalClose = document.querySelector('.modal-close');
+
+    // Function to add click listener to an image
+    function addImageZoomListener(img) {
+        img.addEventListener('click', function() {
+            modal.classList.add('active');
+            modalImg.src = this.src;
+        });
+    }
+
+    // Add click event to all static images in both containers
+    const staticImages = document.querySelectorAll('#static-img img, #static-img-2 img, #selected-right img');
+    staticImages.forEach(img => {
+        addImageZoomListener(img);
+    });
+
+    // Add click event to the selected image
+    const selectedImage = document.getElementById('selected');
+    if (selectedImage) {
+        addImageZoomListener(selectedImage);
+    }
+
+    // Close modal on clicking the X button
+    if (modalClose) {
+        modalClose.addEventListener('click', function(e) {
+            e.stopPropagation();
+            modal.classList.remove('active');
+        });
+    }
+
+    // Close modal on clicking the background
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal || e.target === modalImg) {
+                modal.classList.remove('active');
+            }
+        });
+    }
+
+    // Close modal on ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            modal.classList.remove('active');
+        }
+    });
 });
