@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { SCRNA_GENES } from '../data/scrnaGenes'
-import { fetchScRnaImage } from '../rServers'
+import { getScRnaImageUrl } from '../rServers'
 
 type CellType = 'epithelial' | 'enteroendocrine'
 type Stage = 'fetal' | 'adult'
@@ -312,7 +312,6 @@ export default function Scrna() {
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
   const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
 
-  const inflight = useRef<AbortController | null>(null)
 
   const geneUpperToCanonical = useMemo(() => {
     const m = new Map<string, string>()
@@ -362,7 +361,7 @@ export default function Scrna() {
   const regionDefaults = useMemo(() => REGION_BY_STAGE[stage], [stage])
   const gobletDefaults = useMemo(() => GOBLET_BY_STAGE[stage], [stage])
 
-  async function submitGeneQuery() {
+  function submitGeneQuery() {
     const gRaw = gene.trim()
     setError(null)
     setQueuedMsg(null)
@@ -381,28 +380,13 @@ export default function Scrna() {
 
     // Direct R server mode: no email queueing (renders image immediately).
 
-    inflight.current?.abort()
-    const ac = new AbortController()
-    inflight.current = ac
-
     setQueryStatus('loading')
-
-    try {
-      const url = await fetchScRnaImage({
-        gene: canonical,
-        sampleType: stage,
-        cellType: cellType === 'epithelial' ? 'epithelial' : 'enteroendocrine',
-        signal: ac.signal,
-      })
-      setImgDataUrl(url)
-      setQueryStatus('success')
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      setQueryStatus('error')
-      setError(e instanceof Error ? e.message : 'Network error.')
-    } finally {
-      if (inflight.current === ac) inflight.current = null
-    }
+    const url = getScRnaImageUrl({
+      gene: canonical,
+      sampleType: stage,
+      cellType: cellType === 'epithelial' ? 'epithelial' : 'enteroendocrine',
+    })
+    setImgDataUrl(url)
   }
 
   return (
@@ -659,6 +643,12 @@ export default function Scrna() {
                       alt={resultTitle}
                       src={imgDataUrl}
                       style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid var(--border)' }}
+                      onLoad={() => setQueryStatus('success')}
+                      onError={() => {
+                        setQueryStatus('error')
+                        setError('Unable to load image from the R backend.')
+                        setImgDataUrl(null)
+                      }}
                     />
                   ) : (
                     <div style={placeholder}>

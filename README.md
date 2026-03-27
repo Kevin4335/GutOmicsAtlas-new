@@ -26,7 +26,7 @@ Local development uses **two processes** (Python API + Vite). Production can be 
 | **`ATLAS_IS_SERVER`** | `false` / `0`: dev mode — listen on **9037**, lighter caching. Unset or `true`: production — listen on **80** by default (needs root or `CAP_NET_BIND_SERVICE`). |
 | **`ATLAS_PORT`** | When `ATLAS_IS_SERVER` is true, overrides the port (e.g. **`8000`** if you cannot bind 80). |
 | **`VITE_DEV_API_PROXY`** | Only for **Vite dev** (`npm run dev`). Base URL for the Python API; default **`http://127.0.0.1:9037`**. |
-| **`VITE_API_BASE`** | Set at **build time** for the React app if the browser must talk to another origin (see `frontend/src/pages/AIChat.tsx`). Usually empty when the UI and API share the same host. |
+| **`VITE_API_BASE`** | Optional at **build time** for `AIChat` only. **Leave unset** so chat uses same-origin **`/chat`** (nginx on :80 → Python :8000). Setting this to **`http://host:8000`** often breaks in the browser with *NetworkError* if 8000 is not open on the firewall. |
 
 ---
 

@@ -42,7 +42,7 @@ const TEST_MODE = false;
 
 // API base from .env (VITE_API_BASE). Default to the deployed server so running the UI from a laptop
 // doesn't accidentally call the laptop's own localhost.
-const BASEURL = import.meta.env.VITE_API_BASE ?? "http://128.84.40.118";
+const BASEURL = import.meta.env.VITE_API_BASE ?? "http://128.84.40.118:8000";
 const AI_CHAT_URL = `${BASEURL}/chat`;
 
 const LS_OPENAI = "openai-history";

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /** Python backend (server.py). */
-const API_TARGET = process.env.VITE_DEV_API_PROXY ?? 'http://128.84.40.118'
+const API_TARGET = process.env.VITE_DEV_API_PROXY ?? 'http://128.84.40.118:8000'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/r': { target: API_TARGET, changeOrigin: true },
       '/api': { target: API_TARGET, changeOrigin: true },
       '/chat': { target: API_TARGET, changeOrigin: true },
       '/data': { target: API_TARGET, changeOrigin: true },

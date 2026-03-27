@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
-import { fetchSnAtacImage } from '../rServers'
+import { getSnAtacImageUrl } from '../rServers'
 
 type CellType = 'all' | 'epithelial'
 type SnatacTab = 'overview' | 'result'
@@ -223,12 +223,11 @@ export default function Snatac() {
   const [error, setError] = useState<string | null>(null)
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
   const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
-  const inflight = useRef<AbortController | null>(null)
 
   const resultTitle = `snATAC · ${cellType === 'all' ? 'All cell types' : 'Epithelial'} · Result Chart · Coverage Plot`
   const overview = OVERVIEW_BY_CELL[cellType]
 
-  async function submitQuery() {
+  function submitQuery() {
     const loci = query.trim()
     setError(null)
     setQueuedMsg(null)
@@ -239,26 +238,12 @@ export default function Snatac() {
       return
     }
 
-    inflight.current?.abort()
-    const ac = new AbortController()
-    inflight.current = ac
     setQueryStatus('loading')
-
-    try {
-      const url = await fetchSnAtacImage({
-        loci,
-        cellType: cellType === 'all' ? 'all' : 'epithelial',
-        signal: ac.signal,
-      })
-      setImgDataUrl(url)
-      setQueryStatus('success')
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      setQueryStatus('error')
-      setError(e instanceof Error ? e.message : 'Network error.')
-    } finally {
-      if (inflight.current === ac) inflight.current = null
-    }
+    const url = getSnAtacImageUrl({
+      loci,
+      cellType: cellType === 'all' ? 'all' : 'epithelial',
+    })
+    setImgDataUrl(url)
   }
 
   return (
@@ -432,6 +417,12 @@ export default function Snatac() {
                       alt={resultTitle}
                       src={imgDataUrl}
                       style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid var(--border)' }}
+                      onLoad={() => setQueryStatus('success')}
+                      onError={() => {
+                        setQueryStatus('error')
+                        setError('Unable to load image from the R backend.')
+                        setImgDataUrl(null)
+                      }}
                     />
                   ) : (
                     <div style={placeholder}>

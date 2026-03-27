@@ -51,10 +51,71 @@ hex_to_string <- function(hex_str) {
 app <- list(
   call = function(req) {
     url <- req$PATH_INFO
+
+    # New mode: direct PNG response for browser <img src>.
+    if (grepl("^/genes/", url)) {
+      gene_name <- URLdecode(sub("^/genes/", "", url))
+      query <- req$QUERY_STRING
+      sample_type <- ""
+      if (!is.null(query) && nchar(query) > 0) {
+        for (pair in strsplit(query, "&", fixed = TRUE)[[1]]) {
+          kv <- strsplit(pair, "=", fixed = TRUE)[[1]]
+          if (length(kv) >= 2 && kv[1] == "sample_type") {
+            sample_type <- URLdecode(kv[2])
+            break
+          }
+        }
+      }
+      if (nchar(gene_name) == 0) {
+        body <- "Missing gene name"
+        return(list(
+          status = 400L,
+          headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+          body = body
+        ))
+      }
+      if (!(sample_type %in% c("fetal", "adult"))) {
+        body <- "sample_type must be fetal or adult"
+        return(list(
+          status = 400L,
+          headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+          body = body
+        ))
+      }
+      png_file <- tempfile(fileext = ".png")
+      ok <- TRUE
+      err_msg <- ""
+      tryCatch({
+        if (sample_type == "fetal") scRNA(fetal.epi, gene_name, png_file) else scRNA(adult.epi, gene_name, png_file)
+      }, error = function(e) {
+        ok <<- FALSE
+        err_msg <<- conditionMessage(e)
+      })
+      if (!ok) {
+        body <- paste("ERROR:", err_msg)
+        return(list(
+          status = 500L,
+          headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+          body = body
+        ))
+      }
+      png_size <- file.info(png_file)$size
+      png_data <- readBin(png_file, what = "raw", n = png_size)
+      unlink(png_file)
+      return(list(
+        status = 200L,
+        headers = list(
+          'Access-Control-Allow-Origin' = '*',
+          'Content-Type' = 'image/png',
+          'Content-Length' = as.character(length(png_data))
+        ),
+        body = png_data
+      ))
+    }
+
+    # Legacy mode: hex payload writes to provided file path.
     json_data <- hex_to_string(substr(url, 2, nchar(url)))
     data <- fromJSON(json_data)
-
-    # Expect: { "function": "scrna", "sample_type": "fetal"|"adult", "p1": "GENE", "p2": "out.pdf" }
     if (!is.null(data$sample_type)) {
       if (data$sample_type == "fetal") {
         cat("Running fetal epithelial scRNA\n")
@@ -66,7 +127,6 @@ app <- list(
         stop("Invalid sample_type: must be 'fetal' or 'adult'")
       }
     }
-
     response_body <- "finished"
     return(list(
       status = 200L,

@@ -2,6 +2,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from _thread import start_new_thread
 from time import sleep, time
 import json
+import urllib.error
+import urllib.request
 from myBasics import binToBase64
 from mySecrets import hexToStr
 import os
@@ -19,6 +21,9 @@ from my_email import send_email
 
 IS_SERVER = False
 IS_SERVER = True
+
+_SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+DOCKER_DATA_DIR = os.path.normpath(os.path.join(_SERVER_DIR, '..', 'docker_data'))
 
 
 NO_CACHE = 100000001
@@ -101,9 +106,23 @@ class Request(BaseHTTPRequestHandler):
         if (path.startswith('/html/')):
             return self.process_html(path)
         if (path.startswith('/imgs/')):
+            # Prefer Vite build assets under frontend/dist/imgs/*
+            rel = path.lstrip("/")
+            if rel and ".." not in rel:
+                fp = os.path.join(FRONTEND_DIST, rel)
+                if os.path.isfile(fp):
+                    return self.serve_react_static(path)
             return self.process_img(path)
         if (path.startswith('/api/')):
             return self.process_api()
+        # Same-origin proxy to local R httpuv services (hex path). Browser uses fetch(); <img> cannot use R URLs (they return text).
+        if path.startswith('/r/'):
+            return self.process_r_proxy()
+        # Spatial static datasets live outside frontend/dist; serve via process_data()
+        # Frontend uses /sm/... and /st/... paths.
+        if (path.startswith('/sm/')) or (path.startswith('/st/')):
+            self.path = '/data' + path
+            return self.process_data()
         if(path.startswith('/data/')):
             return self.process_data()
         if(path.startswith('/generated/')):
@@ -112,14 +131,14 @@ class Request(BaseHTTPRequestHandler):
             return self.process_robots_txt()
         if (path == '/sitemap.xml'):
             return self.process_sitemap_xml()
-        # React static: /assets/*, /vite.svg, /favicon.ico, /heart_logo_1.png
-        if path.startswith('/assets/') or path in ('/vite.svg', '/favicon.ico', '/heart_logo_1.png'):
+        # React static: /assets/* and root-level public files copied into dist (favicon.svg, icons.svg, etc.)
+        if path.startswith('/assets/') or path in ('/vite.svg', '/favicon.ico', '/favicon.svg', '/icons.svg', '/heart_logo_1.png'):
             return self.serve_react_static(path)
         # SPA fallback for client-side routes: /chat, /spatial, /multiomics, /scrna, etc.
         return self.serve_react_index()
 
     def do_POST(self) -> None:
-        path = self.path
+        path = self.path.split('?', 1)[0]
         if (path == '/chat'):
             return process_ai_chat(self, path)
         self.send_response(404)
@@ -133,10 +152,58 @@ class Request(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
     
+    def process_r_proxy(self) -> None:
+        path, _, query = self.path.partition('?')
+        if not path.startswith('/r/') or path.count('/') < 3:
+            return self.process_404()
+        rest = path[3:]
+        slash = rest.find('/')
+        if slash <= 0:
+            return self.process_404()
+        port_s, upstream_path = rest[:slash], rest[slash + 1 :]
+        if not port_s.isdigit() or not upstream_path:
+            return self.process_404()
+        port = int(port_s)
+        if port < 1024 or port > 65535:
+            return self.process_404()
+        url = f'http://127.0.0.1:{port}/{upstream_path}'
+        if query:
+            url = f'{url}?{query}'
+        try:
+            with urllib.request.urlopen(url, timeout=3600) as resp:
+                body = resp.read()
+                status = resp.getcode()
+                content_type = resp.headers.get('Content-Type', 'application/octet-stream')
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            status = e.code
+            content_type = e.headers.get('Content-Type', 'text/plain; charset=utf-8') if e.headers else 'text/plain; charset=utf-8'
+        except Exception:
+            msg = b'R proxy: upstream unreachable'
+            self.send_response(502)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', len(msg))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(msg)
+            self.wfile.flush()
+            return
+        self.send_response(status)
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', len(body))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(body)
+        self.wfile.flush()
+        return
+
     def process_generated(self):
-        file_name = self.path[len('/generated/'):]
+        # strip querystring (e.g. cache-buster ?t=...)
+        file_name = self.path.split('?', 1)[0][len('/generated/'):]
         assert('..' not in file_name)
-        file_path = '../docker_data/' + file_name
+        file_path = os.path.join(DOCKER_DATA_DIR, file_name)
         with open(file_path, 'rb') as f:
             data = f.read()
         self.send_response(200)
@@ -157,7 +224,7 @@ class Request(BaseHTTPRequestHandler):
         data = json.loads(data)
         file_name = token_hex(64) + '.pdf'
         R_file_name = '/root/docker_data/' + file_name
-        py_file_name = '../docker_data/' + file_name
+        py_file_name = os.path.join(DOCKER_DATA_DIR, file_name)
         success, error = (False, b'')
         if (data['function'] == 'scrna' and data['type'] == 'ep'):
             # email here
