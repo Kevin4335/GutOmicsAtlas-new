@@ -41,16 +41,25 @@ hex_to_string <- function(hex_str) {
   return(result_str)
 }
 
+log_line <- function(msg) {
+  cat(sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+  flush.console()
+}
+
 
 app <- list(
   call = function(req) {
     url <- req$PATH_INFO
+    q <- if (!is.null(req$QUERY_STRING)) req$QUERY_STRING else ""
+    log_line(sprintf("REQ path=%s query=%s", url, q))
 
     # New mode: direct PNG response for browser <img src>.
     if (grepl("^/genes/", url)) {
       loci <- URLdecode(sub("^/genes/", "", url))
+      log_line(sprintf("DIRECT_IMAGE loci=%s", loci))
       if (nchar(loci) == 0) {
         body <- "Missing loci"
+        log_line("BAD_REQUEST missing loci")
         return(list(
           status = 400L,
           headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
@@ -60,6 +69,8 @@ app <- list(
       png_file <- tempfile(fileext = ".png")
       ok <- TRUE
       err_msg <- ""
+      started_at <- Sys.time()
+      log_line("PLOT_START ataccategory")
       tryCatch({
         ataccategory(loci, 1000, 1000, png_file)
       }, error = function(e) {
@@ -68,6 +79,7 @@ app <- list(
       })
       if (!ok) {
         body <- paste("ERROR:", err_msg)
+        log_line(sprintf("PLOT_ERROR %s", err_msg))
         return(list(
           status = 500L,
           headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
@@ -77,6 +89,8 @@ app <- list(
       png_size <- file.info(png_file)$size
       png_data <- readBin(png_file, what = "raw", n = png_size)
       unlink(png_file)
+      elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
+      log_line(sprintf("PLOT_DONE ataccategory elapsed=%.2fs bytes=%d", elapsed, length(png_data)))
       return(list(
         status = 200L,
         headers = list(
@@ -89,6 +103,7 @@ app <- list(
     }
 
     # Legacy mode: hex payload writes to provided file path.
+    log_line("LEGACY_HEX_REQUEST")
     json_data <- hex_to_string(substr(url, 2, nchar(url)))
     data <- fromJSON(json_data)
     f <- data$f

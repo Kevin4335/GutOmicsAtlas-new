@@ -100,6 +100,15 @@ class Request(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split('?')[0]
+        # Browsers still request /favicon.ico; we only ship public/favicon.svg from the Vite build.
+        if path == '/favicon.ico':
+            self.send_response(302)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Location', '/favicon.svg')
+            self.send_header('Content-Length', 0)
+            self.end_headers()
+            self.wfile.flush()
+            return
         # React SPA: / and /index.html
         if path == '/' or path == '/index.html':
             return self.serve_react_index()
@@ -132,7 +141,7 @@ class Request(BaseHTTPRequestHandler):
         if (path == '/sitemap.xml'):
             return self.process_sitemap_xml()
         # React static: /assets/* and root-level public files copied into dist (favicon.svg, icons.svg, etc.)
-        if path.startswith('/assets/') or path in ('/vite.svg', '/favicon.ico', '/favicon.svg', '/icons.svg', '/heart_logo_1.png'):
+        if path.startswith('/assets/') or path in ('/vite.svg', '/favicon.svg', '/icons.svg', '/heart_logo_1.png'):
             return self.serve_react_static(path)
         # SPA fallback for client-side routes: /chat, /spatial, /multiomics, /scrna, etc.
         return self.serve_react_index()

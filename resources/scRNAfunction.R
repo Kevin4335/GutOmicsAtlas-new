@@ -47,27 +47,45 @@ hex_to_string <- function(hex_str) {
   return(result_str)
 }
 
+query_param <- function(req, key) {
+  q <- ""
+  if (!is.null(req$QUERY_STRING) && nchar(req$QUERY_STRING) > 0) q <- req$QUERY_STRING
+  if ((is.null(q) || nchar(q) == 0) && !is.null(req$REQUEST_URI)) {
+    uri <- req$REQUEST_URI
+    qpos <- regexpr("\\?", uri)
+    if (qpos[1] > 0) q <- substring(uri, qpos[1] + 1)
+  }
+  if ((is.null(q) || nchar(q) == 0) && grepl("\\?", req$PATH_INFO, fixed = TRUE)) {
+    q <- sub("^[^?]*\\?", "", req$PATH_INFO)
+  }
+  if (is.null(q) || nchar(q) == 0) return("")
+  for (pair in strsplit(q, "&", fixed = TRUE)[[1]]) {
+    kv <- strsplit(pair, "=", fixed = TRUE)[[1]]
+    if (length(kv) >= 2 && kv[1] == key) return(URLdecode(kv[2]))
+  }
+  ""
+}
+
+log_line <- function(msg) {
+  cat(sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+  flush.console()
+}
+
 # ================== HTTP Server ==================
 app <- list(
   call = function(req) {
     url <- req$PATH_INFO
+    q <- if (!is.null(req$QUERY_STRING)) req$QUERY_STRING else ""
+    log_line(sprintf("REQ path=%s query=%s", url, q))
 
     # New mode: direct PNG response for browser <img src>.
     if (grepl("^/genes/", url)) {
       gene_name <- URLdecode(sub("^/genes/", "", url))
-      query <- req$QUERY_STRING
-      sample_type <- ""
-      if (!is.null(query) && nchar(query) > 0) {
-        for (pair in strsplit(query, "&", fixed = TRUE)[[1]]) {
-          kv <- strsplit(pair, "=", fixed = TRUE)[[1]]
-          if (length(kv) >= 2 && kv[1] == "sample_type") {
-            sample_type <- URLdecode(kv[2])
-            break
-          }
-        }
-      }
+      sample_type <- query_param(req, "sample_type")
+      log_line(sprintf("DIRECT_IMAGE gene=%s sample_type=%s", gene_name, sample_type))
       if (nchar(gene_name) == 0) {
         body <- "Missing gene name"
+        log_line("BAD_REQUEST missing gene name")
         return(list(
           status = 400L,
           headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
@@ -76,6 +94,7 @@ app <- list(
       }
       if (!(sample_type %in% c("fetal", "adult"))) {
         body <- "sample_type must be fetal or adult"
+        log_line("BAD_REQUEST invalid sample_type")
         return(list(
           status = 400L,
           headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
@@ -85,6 +104,8 @@ app <- list(
       png_file <- tempfile(fileext = ".png")
       ok <- TRUE
       err_msg <- ""
+      started_at <- Sys.time()
+      log_line("PLOT_START scRNA")
       tryCatch({
         if (sample_type == "fetal") scRNA(fetal.epi, gene_name, png_file) else scRNA(adult.epi, gene_name, png_file)
       }, error = function(e) {
@@ -93,6 +114,7 @@ app <- list(
       })
       if (!ok) {
         body <- paste("ERROR:", err_msg)
+        log_line(sprintf("PLOT_ERROR %s", err_msg))
         return(list(
           status = 500L,
           headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
@@ -102,6 +124,8 @@ app <- list(
       png_size <- file.info(png_file)$size
       png_data <- readBin(png_file, what = "raw", n = png_size)
       unlink(png_file)
+      elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
+      log_line(sprintf("PLOT_DONE scRNA elapsed=%.2fs bytes=%d", elapsed, length(png_data)))
       return(list(
         status = 200L,
         headers = list(
@@ -114,6 +138,7 @@ app <- list(
     }
 
     # Legacy mode: hex payload writes to provided file path.
+    log_line("LEGACY_HEX_REQUEST")
     json_data <- hex_to_string(substr(url, 2, nchar(url)))
     data <- fromJSON(json_data)
     if (!is.null(data$sample_type)) {
