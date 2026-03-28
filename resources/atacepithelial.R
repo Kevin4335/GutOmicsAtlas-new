@@ -14,17 +14,23 @@ epithelial@assays[["ATAC"]]@fragments[[6]]@path<-"/home/ubuntu/website/data/atac
 epithelial@assays[["ATAC"]]@fragments[[7]]@path<-"/home/ubuntu/website/data/atac/source-selected/3834_hindgut/fragments.tsv.gz"
 epithelial@assays[["ATAC"]]@fragments[[8]]@path<-"/home/ubuntu/website/data/atac/source-selected/F1_3834_foregut/fragments.tsv.gz"
 epithelial@assays[["ATAC"]]@fragments[[9]]@path<-"/home/ubuntu/website/data/atac/source-selected/3824_colon/fragments.tsv.gz"
-cluster_colors <- c("#00BFC4", "#F8766D", "#ABA300","#C77CFF")  # Match the number of clusters
+
 atacepithelial<-function(genes, upstream, downstream, pdf_path){
-p1<-CoveragePlot(
+  # Use CoveragePlot's cols only. Combining with & scale_fill_manual() breaks Signac/patchwork
+  # and often yields: non-numeric argument to binary operator (during render/ggsave).
+  p1 <- CoveragePlot(
     object = epithelial,
     region = genes,
-    cols = c("Goblet cells" = "#00BFC4", "Enterocytes" = "#F8766D", "Stem cells + progenitors"="#ABA300","EECs"="#C77CFF"),
+    cols = c(
+      "Goblet cells" = "#00BFC4",
+      "Enterocytes" = "#F8766D",
+      "Stem cells + progenitors" = "#ABA300",
+      "EECs" = "#C77CFF"
+    ),
     extend.upstream = upstream,
     extend.downstream = downstream
   )
-p2<-p1 & scale_fill_manual(values = cluster_colors)
-ggsave(pdf_path, plot = p2, width = 10, height = 10)
+  ggsave(pdf_path, plot = p1, width = 10, height = 10)
 }
 
 # atacepithelial("EPCAM",1000,1000)
@@ -98,6 +104,28 @@ app <- list(
           'Content-Length' = as.character(length(png_data))
         ),
         body = png_data
+      ))
+    }
+
+    # Crawlers on public ports — not legacy hex API.
+    if (grepl("^/(favicon\\.ico|robots\\.txt|sitemap\\.xml|security\\.txt)$", url, ignore.case = TRUE) ||
+        grepl("^/\\.well-known/", url)) {
+      body <- "Not found"
+      log_line("SCANNER_PATH_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
+      ))
+    }
+    hex_tail <- substring(url, 2)
+    if (!grepl("^[0-9a-fA-F]+$", hex_tail) || nchar(hex_tail) < 16) {
+      body <- "Not found"
+      log_line("NOT_LEGACY_HEX_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
       ))
     }
 

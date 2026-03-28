@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
-import { getSnAtacImageUrl } from '../rServers'
+import { rImageBaseHost } from '../rImageBase'
 
 type CellType = 'all' | 'epithelial'
 type SnatacTab = 'overview' | 'result'
@@ -51,9 +51,13 @@ const SNATAC_STYLE_TAG = `
 }
 `
 
-// hex helper moved to rServers.ts (direct R server calls)
+const R_BASE_HOST = rImageBaseHost()
 
-// (legacy /api response helper removed)
+function getSnAtacImageUrl(opts: { loci: string; cellType: CellType }): string {
+  const port = opts.cellType === 'all' ? 9026 : 9027
+  const encodedLoci = encodeURIComponent(opts.loci)
+  return `${R_BASE_HOST}:${port}/genes/${encodedLoci}`
+}
 
 const shell: CSSProperties = {
   minHeight: '100vh',
@@ -239,10 +243,10 @@ export default function Snatac() {
     }
 
     setQueryStatus('loading')
-    const url = getSnAtacImageUrl({
+    const url = `${getSnAtacImageUrl({
       loci,
       cellType: cellType === 'all' ? 'all' : 'epithelial',
-    })
+    })}?_${Date.now()}`
     setImgDataUrl(url)
   }
 
@@ -420,7 +424,7 @@ export default function Snatac() {
                       onLoad={() => setQueryStatus('success')}
                       onError={() => {
                         setQueryStatus('error')
-                        setError('Unable to load image from the R backend.')
+                        setError('This figure could not be loaded. Please try again.')
                         setImgDataUrl(null)
                       }}
                     />

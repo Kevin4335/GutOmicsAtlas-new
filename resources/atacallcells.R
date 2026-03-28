@@ -7,15 +7,15 @@ cat("import finished", "\n")
 category<-readRDS("/home/ubuntu/website/data/atac/All_cells/integratedgutcategory.rds")
 #Change path of fragment files
 cat("readRDS finished", "\n")
-category@assays[["ATAC"]]@fragments[[1]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/M1_3834_midgut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[2]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3824_hindgut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[3]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3824_midgut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[4]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3767_colon/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[5]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3767_midgut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[6]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3767_foregut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[7]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3834_hindgut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[8]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/F1_3834_foregut/fragments.tsv.gz"
-category@assays[["ATAC"]]@fragments[[9]]@path<-"/home/ubuntu/website/data/atac/All_cells/source-selected/3824_colon/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[1]]@path<-"/home/ubuntu/website/data/atac/source-selected/M1_3834_midgut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[2]]@path<-"/home/ubuntu/website/data/atac/source-selected/3824_hindgut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[3]]@path<-"/home/ubuntu/website/data/atac/source-selected/3824_midgut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[4]]@path<-"/home/ubuntu/website/data/atac/source-selected/3767_colon/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[5]]@path<-"/home/ubuntu/website/data/atac/source-selected/3767_midgut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[6]]@path<-"/home/ubuntu/website/data/atac/source-selected/3767_foregut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[7]]@path<-"/home/ubuntu/website/data/atac/source-selected/3834_hindgut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[8]]@path<-"/home/ubuntu/website/data/atac/source-selected/F1_3834_foregut/fragments.tsv.gz"
+category@assays[["ATAC"]]@fragments[[9]]@path<-"/home/ubuntu/website/data/atac/source-selected/3824_colon/fragments.tsv.gz"
 cat("loading fragment files finished", "\n")
 ataccategory<-function(genes, upstream, downstream, pdf_path){
 p1<-CoveragePlot(
@@ -99,6 +99,28 @@ app <- list(
           'Content-Length' = as.character(length(png_data))
         ),
         body = png_data
+      ))
+    }
+
+    # Crawlers on public ports — not legacy hex API.
+    if (grepl("^/(favicon\\.ico|robots\\.txt|sitemap\\.xml|security\\.txt)$", url, ignore.case = TRUE) ||
+        grepl("^/\\.well-known/", url)) {
+      body <- "Not found"
+      log_line("SCANNER_PATH_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
+      ))
+    }
+    hex_tail <- substring(url, 2)
+    if (!grepl("^[0-9a-fA-F]+$", hex_tail) || nchar(hex_tail) < 16) {
+      body <- "Not found"
+      log_line("NOT_LEGACY_HEX_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
       ))
     }
 

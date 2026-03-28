@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { SCRNA_GENES } from '../data/scrnaGenes'
-import { getScRnaImageUrl } from '../rServers'
+import { rImageBaseHost } from '../rImageBase'
 
 type CellType = 'epithelial' | 'enteroendocrine'
 type Stage = 'fetal' | 'adult'
@@ -111,8 +111,6 @@ const SCRNA_STYLE_TAG = `
 }
 .scrna-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
 `
-
-// hex helper moved to rServers.ts (direct R server calls)
 
 function chartTitle(mod: string, cellType: CellType, stage: Stage, section: string, chart: string) {
   const ct = cellType === 'epithelial' ? 'Epithelial' : 'Enteroendocrine'
@@ -297,6 +295,25 @@ const input: CSSProperties = {
 
 const subtle: CSSProperties = { color: 'var(--muted)', fontSize: '0.82rem', lineHeight: 1.65 }
 
+const R_BASE_HOST = rImageBaseHost()
+
+/** Enteroendocrine (EEC) = 9028 (EECplot.R). Epithelial = 9025 (scRNAfunction.R). */
+const SCRNA_R_PORT: Record<CellType, number> = {
+  enteroendocrine: 9028,
+  epithelial: 9025,
+}
+
+function getScRnaImageUrl(opts: { gene: string; sampleType: Stage; cellType: CellType }): string {
+  const port = SCRNA_R_PORT[opts.cellType]
+  const encodedGene = encodeURIComponent(opts.gene)
+  const encodedStage = encodeURIComponent(opts.sampleType)
+  return `${R_BASE_HOST}:${port}/genes/${encodedGene}?sample_type=${encodedStage}`
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[a-zA-Z0-9_.+-]+@([a-zA-Z0-9-]+\.)+[a-zA-Z]+$/.test(email)
+}
+
 export default function Scrna() {
   const { hash } = useLocation()
 
@@ -378,14 +395,21 @@ export default function Scrna() {
       return
     }
 
-    // Direct R server mode: no email queueing (renders image immediately).
+    // Keep epithelial email requirement while using direct image endpoints.
+    if (cellType === 'epithelial') {
+      const em = email.trim()
+      if (!em || !isValidEmail(em)) {
+        setError('A valid email is required for epithelial mode.')
+        return
+      }
+    }
 
     setQueryStatus('loading')
-    const url = getScRnaImageUrl({
+    const url = `${getScRnaImageUrl({
       gene: canonical,
       sampleType: stage,
-      cellType: cellType === 'epithelial' ? 'epithelial' : 'enteroendocrine',
-    })
+      cellType,
+    })}&_=${Date.now()}`
     setImgDataUrl(url)
   }
 
@@ -640,13 +664,14 @@ export default function Scrna() {
                 <div style={cardBody}>
                   {imgDataUrl ? (
                     <img
+                      key={imgDataUrl}
                       alt={resultTitle}
                       src={imgDataUrl}
                       style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid var(--border)' }}
                       onLoad={() => setQueryStatus('success')}
                       onError={() => {
                         setQueryStatus('error')
-                        setError('Unable to load image from the R backend.')
+                        setError('This figure could not be loaded. Please try again.')
                         setImgDataUrl(null)
                       }}
                     />

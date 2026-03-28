@@ -59,6 +59,9 @@ query_param <- function(req, key) {
     q <- sub("^[^?]*\\?", "", req$PATH_INFO)
   }
   if (is.null(q) || nchar(q) == 0) return("")
+  # httpuv sometimes sets QUERY_STRING to "?a=b" — first key would be "?a" without this.
+  q <- sub("^\\?", "", q)
+  if (nchar(q) == 0) return("")
   for (pair in strsplit(q, "&", fixed = TRUE)[[1]]) {
     kv <- strsplit(pair, "=", fixed = TRUE)[[1]]
     if (length(kv) >= 2 && kv[1] == key) return(URLdecode(kv[2]))
@@ -134,6 +137,28 @@ app <- list(
           'Content-Length' = as.character(length(png_data))
         ),
         body = png_data
+      ))
+    }
+
+    # Crawlers on public ports — not legacy hex API.
+    if (grepl("^/(favicon\\.ico|robots\\.txt|sitemap\\.xml|security\\.txt)$", url, ignore.case = TRUE) ||
+        grepl("^/\\.well-known/", url)) {
+      body <- "Not found"
+      log_line("SCANNER_PATH_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
+      ))
+    }
+    hex_tail <- substring(url, 2)
+    if (!grepl("^[0-9a-fA-F]+$", hex_tail) || nchar(hex_tail) < 16) {
+      body <- "Not found"
+      log_line("NOT_LEGACY_HEX_404")
+      return(list(
+        status = 404L,
+        headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+        body = body
       ))
     }
 

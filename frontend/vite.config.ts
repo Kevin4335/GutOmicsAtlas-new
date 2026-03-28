@@ -10,7 +10,6 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/r': { target: API_TARGET, changeOrigin: true },
       '/api': { target: API_TARGET, changeOrigin: true },
       '/chat': { target: API_TARGET, changeOrigin: true },
       '/data': { target: API_TARGET, changeOrigin: true },

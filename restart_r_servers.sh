@@ -20,8 +20,8 @@ done
 sleep 2
 
 # Step 2: Kill any processes using the R server ports (backup method)
-echo "Step 2: Killing processes on gut R server ports (9024-9027)..."
-for port in 9024 9025 9026 9027; do
+echo "Step 2: Killing processes on gut R server ports (9025-9028)..."
+for port in 9025 9026 9027 9028; do
     pid=$(lsof -ti:$port 2>/dev/null)
     if [ ! -z "$pid" ]; then
         echo "  Killing process on port $port (PID: $pid)"
@@ -35,8 +35,8 @@ echo "Step 3: Starting R servers in screen sessions..."
 
 cd "$BASE_DIR"
 
-# Gut scRNA EEC server (port 9024)
-echo "  Starting gut scRNA EEC server (port 9024)..."
+# Gut scRNA EEC server (port 9028)
+echo "  Starting gut scRNA EEC server (port 9028)..."
 cd "$BASE_DIR"
 screen -dmS gut_scrna_eec Rscript EECplot.R
 sleep 1
@@ -68,7 +68,7 @@ screen -ls
 
 echo ""
 echo "Checking ports..."
-for port in 9024 9025 9026 9027; do
+for port in 9025 9026 9027 9028; do
     if lsof -ti:$port > /dev/null 2>&1; then
         echo "  ✓ Port $port is active"
     else
@@ -85,7 +85,7 @@ echo "To view a server's output, use:"
 echo "  screen -r <session_name>"
 echo ""
 echo "Available sessions:"
-echo "  - gut_scrna_eec (port 9024)"
+echo "  - gut_scrna_eec (port 9028)"
 echo "  - gut_scrna_epi (port 9025)"
 echo "  - gut_atac_all (port 9026)"
 echo "  - gut_atac_epi (port 9027)"
