@@ -2,6 +2,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from _thread import start_new_thread
 from time import sleep, time
 import json
+import re
 import urllib.error
 import urllib.request
 from myBasics import binToBase64
@@ -25,6 +26,37 @@ IS_SERVER = True
 _SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 DOCKER_DATA_DIR = os.path.normpath(os.path.join(_SERVER_DIR, '..', 'docker_data'))
 
+# POST /api/email-plot-link: optional "email me this plot URL" for allowlisted UI flows.
+_EMAIL_PLOT_LINK_CONTEXTS: dict[str, str] = {
+    'scrna_epithelial': 'Result for scRNA-Seq Epithelial cells analysis',
+    'scrna_eec': 'Result for scRNA-Seq Enteroendocrine (EEC) cells analysis',
+}
+_EMAIL_PLOT_PNG_MAX_BYTES = 25 * 1024 * 1024
+_EMAIL_PLOT_FETCH_TIMEOUT_SEC = 180
+
+
+def _fetch_png_bytes(plot_url: str) -> bytes:
+    """GET plot URL (R httpuv) and return body if it looks like a PNG."""
+    req = urllib.request.Request(
+        plot_url,
+        method='GET',
+        headers={'User-Agent': 'GutOmicsAtlas-email/1.0'},
+    )
+    with urllib.request.urlopen(req, timeout=_EMAIL_PLOT_FETCH_TIMEOUT_SEC) as resp:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = resp.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _EMAIL_PLOT_PNG_MAX_BYTES:
+                raise ValueError('plot response too large')
+            chunks.append(chunk)
+    data = b''.join(chunks)
+    if len(data) < 8 or not data.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('response is not a PNG')
+    return data
 
 NO_CACHE = 100000001
 CACHE_ALL = 100000002
@@ -150,6 +182,10 @@ class Request(BaseHTTPRequestHandler):
         path = self.path.split('?', 1)[0]
         if (path == '/chat'):
             return process_ai_chat(self, path)
+        if path == '/api/email-plot-link':
+            return self.process_email_plot_link()
+        if path == '/api/scrna-epi-notify':
+            return self.process_email_plot_link(default_context='scrna_epithelial')
         self.send_response(404)
         self.send_header('Connection', 'keep-alive')
         self.send_header('Content-Length', 13)
@@ -226,6 +262,97 @@ class Request(BaseHTTPRequestHandler):
         return
         
     
+    def process_email_plot_link(self, default_context: str | None = None) -> None:
+        """Email user the plot as a PNG attachment (fetched from plot_url server-side)."""
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 8192:
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        try:
+            data = json.loads(self.rfile.read(length).decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        context = (data.get('context') or '').strip()
+        if not context and default_context:
+            context = default_context
+        title = _EMAIL_PLOT_LINK_CONTEXTS.get(context)
+        if title is None:
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        email = (data.get('email') or '').strip()
+        gene = (data.get('gene') or '').strip()
+        sample_type = (data.get('sample_type') or '').strip()
+        plot_url = (data.get('plot_url') or '').strip()
+        if not email or not gene or not plot_url:
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        if sample_type not in ('fetal', 'adult'):
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        if not re.match(r'^[a-zA-Z0-9_.+-]+@([a-zA-Z0-9-]+\.)+[a-zA-Z]+$', email):
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        if not re.match(r'^https?://[^/?#]+/genes/', plot_url) or len(plot_url) > 2048:
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        if not re.match(r'^[A-Za-z0-9_.-]{1,64}$', gene):
+            self.send_response(400)
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Content-Length', 0)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+
+        def mail_thread():
+            try:
+                png_bytes = _fetch_png_bytes(plot_url)
+                fname = f'{gene}_{sample_type}.png'
+                body = f'{gene} ({sample_type})\n\nCoverage plot is attached.'
+                send_email(email, title, body, attachments=[(fname, png_bytes)])
+            except Exception:
+                pass
+
+        start_new_thread(mail_thread, ())
+        self.send_response(204)
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('Content-Length', 0)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.flush()
+        return
+
     def process_api(self):
         path = self.path
         path = path[5:]
@@ -243,13 +370,11 @@ class Request(BaseHTTPRequestHandler):
             def email_thread():
                 success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
                 png_bytes = pdf_to_png_bytes(py_file_name)
-                py_png_file_name = py_file_name.replace('.pdf', '.png')
-                with open(py_png_file_name, 'wb') as f:
-                    f.write(png_bytes)
-                url = 'http://' + self.headers['Host'] + '/generated/' + file_name.replace('.pdf', '.png')
+                st = (data.get('sample_type') or 'unknown').strip()
                 title = 'Result for scRNA-Seq Epithelial cells analysis'
-                content = f'{gene}\n\n{url}'
-                send_email(email, title, content)
+                content = f'{gene} ({st})\n\nCoverage plot is attached.'
+                fname = f'{gene}_{st}.png'
+                send_email(email, title, content, attachments=[(fname, png_bytes)])
             start_new_thread(email_thread, ())
             self.send_response(202)
             self.send_header('Connection', 'keep-alive')

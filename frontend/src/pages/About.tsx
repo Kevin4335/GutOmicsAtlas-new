@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { LightboxZoomImage } from '../components/LightboxZoomImage'
 
 const ABOUT_STYLE_TAG = `
 .about-shell { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
@@ -204,7 +205,7 @@ export default function About() {
             </div>
             <div className="about-lab-card">
               <figure className="about-lab-diagram-wrap">
-                <img
+                <LightboxZoomImage
                   className="about-lab-diagram"
                   src="/imgs/diagram.webp"
                   alt="Diagram of the hPSC research cycle in the Chen Laboratory, from disease models and screening through organoids and translational approaches."

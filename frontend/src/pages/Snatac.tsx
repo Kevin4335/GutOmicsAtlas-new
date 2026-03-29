@@ -1,7 +1,10 @@
 import type { CSSProperties } from 'react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { LightboxZoomImage } from '../components/LightboxZoomImage'
+import { LoadingBar } from '../components/LoadingBar'
+import { SCRNA_GENES } from '../data/scrnaGenes'
 import { rImageBaseHost } from '../rImageBase'
 
 type CellType = 'all' | 'epithelial'
@@ -49,6 +52,31 @@ const SNATAC_STYLE_TAG = `
   .pvs-left { position: sticky; top: 80px; }
   .snatac-two-col { grid-template-columns: 1fr 1fr; }
 }
+.scrna-dropdown-wrap { position: relative; }
+.scrna-gene-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  display: none;
+}
+.scrna-gene-dropdown.open { display: block; }
+.scrna-dropdown-item {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.scrna-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
 `
 
 const R_BASE_HOST = rImageBaseHost()
@@ -57,6 +85,15 @@ function getSnAtacImageUrl(opts: { loci: string; cellType: CellType }): string {
   const port = opts.cellType === 'all' ? 9026 : 9027
   const encodedLoci = encodeURIComponent(opts.loci)
   return `${R_BASE_HOST}:${port}/genes/${encodedLoci}`
+}
+
+/** Same gene bank as scRNA; hide suggestions when input looks like a genomic interval. */
+function suppressAtacGeneSuggestions(raw: string): boolean {
+  const q = raw.trim()
+  if (!q) return false
+  if (/chr[\dXYxy]/i.test(q)) return true
+  if (q.includes(':')) return true
+  return false
 }
 
 const shell: CSSProperties = {
@@ -117,9 +154,11 @@ const cardTitle: CSSProperties = {
 
 const cardBody: CSSProperties = { padding: 16 }
 
+const RESULT_CHART_MIN_H = 320
+
 const placeholder: CSSProperties = {
   width: '100%',
-  height: 320,
+  height: RESULT_CHART_MIN_H,
   background: '#f3f4f6',
   borderRadius: 8,
   border: 'none',
@@ -223,13 +262,39 @@ export default function Snatac() {
   const [cellType, setCellType] = useState<CellType>('all')
   const [tab, setTab] = useState<SnatacTab>('overview')
   const [query, setQuery] = useState('')
+  const [lociDropdownOpen, setLociDropdownOpen] = useState(false)
   const [queryStatus, setQueryStatus] = useState<QueryStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
   const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
 
+  const filteredAtacGenes = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return SCRNA_GENES.slice(0, 16)
+    const out: string[] = []
+    for (const g of SCRNA_GENES) {
+      if (g.toLowerCase().includes(q)) {
+        out.push(g)
+        if (out.length >= 16) break
+      }
+    }
+    return out
+  }, [query])
+
+  useEffect(() => {
+    setImgDataUrl(null)
+    setError(null)
+    setQueryStatus('idle')
+    setQueuedMsg(null)
+  }, [cellType])
+
   const resultTitle = `snATAC · ${cellType === 'all' ? 'All cell types' : 'Epithelial'} · Result Chart · Coverage Plot`
   const overview = OVERVIEW_BY_CELL[cellType]
+  const showGeneSuggestions =
+    lociDropdownOpen &&
+    query.trim().length > 0 &&
+    !suppressAtacGeneSuggestions(query) &&
+    filteredAtacGenes.length > 0
 
   function submitQuery() {
     const loci = query.trim()
@@ -238,7 +303,7 @@ export default function Snatac() {
     setImgDataUrl(null)
 
     if (!loci) {
-      setError('Genetic loci cannot be empty.')
+      setError('Gene or loci cannot be empty.')
       return
     }
 
@@ -289,7 +354,7 @@ export default function Snatac() {
           </div>
           <p style={{ ...subtle, animation: 'gutFadeUp 0.4s 0.10s ease both' }}>
             Explore chromatin accessibility (snATAC-seq) across gut cell groups. Use Overview for default static
-            plots, then switch to Result Chart to query a genetic loci.
+            plots, then switch to Result Chart to query a genomic loci.
           </p>
           <div
             style={{
@@ -343,7 +408,7 @@ export default function Snatac() {
                   <div style={cardTitle}>{overview.leftLabel}</div>
                 </div>
                 <div style={{ ...cardBody, padding: 12 }}>
-                  <img
+                  <LightboxZoomImage
                     alt={overview.leftLabel}
                     src={overview.leftSrc}
                     style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
@@ -355,7 +420,7 @@ export default function Snatac() {
                   <div style={cardTitle}>{overview.rightLabel}</div>
                 </div>
                 <div style={{ ...cardBody, padding: 12 }}>
-                  <img
+                  <LightboxZoomImage
                     alt={overview.rightLabel}
                     src={overview.rightSrc}
                     style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
@@ -369,18 +434,48 @@ export default function Snatac() {
             <>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 }}>
-                  <span style={fieldLabel}>Genetic Loci</span>
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    style={input}
-                    placeholder="e.g. chr11:6153000-6159000"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') submitQuery()
-                    }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                    onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border2)')}
-                  />
+                  <span style={fieldLabel}>Gene or loci</span>
+                  <div className="scrna-dropdown-wrap">
+                    <input
+                      value={query}
+                      onChange={(e) => {
+                        setQuery(e.target.value)
+                        setLociDropdownOpen(true)
+                        setError(null)
+                      }}
+                      style={input}
+                      placeholder="Search gene…"
+                      autoComplete="off"
+                      onFocus={(e) => {
+                        setLociDropdownOpen(true)
+                        e.currentTarget.style.borderColor = 'var(--accent)'
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border2)'
+                        window.setTimeout(() => setLociDropdownOpen(false), 200)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') submitQuery()
+                      }}
+                    />
+                    <div className={`scrna-gene-dropdown${showGeneSuggestions ? ' open' : ''}`}>
+                      {filteredAtacGenes.map((g) => (
+                        <div
+                          key={g}
+                          role="option"
+                          className="scrna-dropdown-item"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setQuery(g)
+                            setLociDropdownOpen(false)
+                            setError(null)
+                          }}
+                        >
+                          {g}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -417,17 +512,49 @@ export default function Snatac() {
                 </div>
                 <div style={cardBody}>
                   {imgDataUrl ? (
-                    <img
-                      alt={resultTitle}
-                      src={imgDataUrl}
-                      style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid var(--border)' }}
-                      onLoad={() => setQueryStatus('success')}
-                      onError={() => {
-                        setQueryStatus('error')
-                        setError('This figure could not be loaded. Please try again.')
-                        setImgDataUrl(null)
-                      }}
-                    />
+                    <div style={{ position: 'relative', minHeight: RESULT_CHART_MIN_H, borderRadius: 8 }}>
+                      {queryStatus === 'loading' ? (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 12,
+                            background: '#f3f4f6',
+                            borderRadius: 8,
+                            zIndex: 1,
+                            pointerEvents: 'none',
+                          }}
+                          aria-busy
+                          aria-label="Generating plot"
+                        >
+                          <LoadingBar />
+                          <div style={{ ...phText, padding: 0 }}>Generating plot…</div>
+                        </div>
+                      ) : null}
+                      <LightboxZoomImage
+                        key={imgDataUrl}
+                        alt={resultTitle}
+                        src={imgDataUrl}
+                        style={{
+                          width: '100%',
+                          display: 'block',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          minHeight: queryStatus === 'loading' ? RESULT_CHART_MIN_H : undefined,
+                          opacity: queryStatus === 'loading' ? 0 : 1,
+                        }}
+                        onLoad={() => setQueryStatus('success')}
+                        onError={() => {
+                          setQueryStatus('error')
+                          setError('This figure could not be loaded. Please try again.')
+                          setImgDataUrl(null)
+                        }}
+                      />
+                    </div>
                   ) : (
                     <div style={placeholder}>
                       <div style={phText}>

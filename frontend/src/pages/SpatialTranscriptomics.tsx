@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { ST_ALL_GENES } from '../data/stGenes'
 
 type StTab = 'overview' | 'spatial-area' | 'gene-expr'
@@ -183,13 +184,10 @@ const ST_STYLE_TAG = `
   font-size: 0.78rem;
   text-align: center;
 }
-.st-gene-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+.st-gene-stack {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-}
-@media (min-width: 900px) {
-  .st-gene-grid { grid-template-columns: 1fr 1fr; }
 }
 .st-gene-img { width: 100%; display: block; border-radius: 8px; border: 1px solid var(--border); }
 `
@@ -244,7 +242,7 @@ function StLoadedImg({
   }
   return (
     <div style={{ padding: 12 }}>
-      <img
+      <LightboxZoomImage
         className="st-gene-img"
         src={src}
         alt={alt}
@@ -352,7 +350,7 @@ export default function SpatialTranscriptomics() {
                       </div>
                     </div>
                     <div className="st-chart-body">
-                      <img className="st-static-img" src={item.src} alt={item.alt} />
+                      <LightboxZoomImage className="st-static-img" src={item.src} alt={item.alt} />
                     </div>
                   </div>
                 ))}
@@ -365,7 +363,7 @@ export default function SpatialTranscriptomics() {
                   <div className="st-chart-title">{SPATIAL_AREA_IMAGE.title}</div>
                 </div>
                 <div className="st-chart-body">
-                  <img className="st-static-img" src={SPATIAL_AREA_IMAGE.src} alt={SPATIAL_AREA_IMAGE.alt} />
+                  <LightboxZoomImage className="st-static-img" src={SPATIAL_AREA_IMAGE.src} alt={SPATIAL_AREA_IMAGE.alt} />
                 </div>
               </div>
             </div>
@@ -432,7 +430,7 @@ export default function SpatialTranscriptomics() {
                   Choose a gene and click Load to fetch spatial feature plots from the server.
                 </div>
               ) : (
-                <div className="st-gene-grid">
+                <div className="st-gene-stack">
                   <div className="st-chart-card">
                     <div className="st-chart-card-header">
                       <div className="st-chart-title">Spatial TX · Gene expression · {selectedGene} · Panel A</div>
@@ -456,7 +454,7 @@ export default function SpatialTranscriptomics() {
                       <div className="st-chart-title">Spatial TX · Gene expression · {selectedGene} · Reference</div>
                     </div>
                     <div className="st-chart-body">
-                      <img className="st-static-img" src={GENE_RIGHT_STATIC} alt="Spatial reference panel" />
+                      <LightboxZoomImage className="st-static-img" src={GENE_RIGHT_STATIC} alt="Spatial reference panel" />
                     </div>
                   </div>
                 </div>

@@ -1,0 +1,10 @@
+/* yet-another-react-lightbox: match site accent for toolbar (close, zoom ±, etc.) */
+.yarl__portal {
+  --yarl__color_button: var(--accent, #de3341);
+  --yarl__color_button_active: #c41f2d;
+  --yarl__color_button_disabled: rgba(222, 51, 65, 0.38);
+}
+
+.yarl__slide_image {
+  cursor: crosshair;
+}

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { LightboxZoomImage } from '../components/LightboxZoomImage'
+import { LoadingBar } from '../components/LoadingBar'
 import { SCRNA_GENES } from '../data/scrnaGenes'
 import { rImageBaseHost } from '../rImageBase'
 
@@ -219,9 +221,12 @@ const cardTitle: CSSProperties = {
 
 const cardBody: CSSProperties = { padding: 16 }
 
+/** Min height for result chart area (idle, loading overlay, and snATAC-style layout). */
+const RESULT_CHART_MIN_H = 320
+
 const placeholder: CSSProperties = {
   width: '100%',
-  height: 320,
+  height: RESULT_CHART_MIN_H,
   background: '#f3f4f6',
   borderRadius: 8,
   border: 'none',
@@ -378,6 +383,13 @@ export default function Scrna() {
   const regionDefaults = useMemo(() => REGION_BY_STAGE[stage], [stage])
   const gobletDefaults = useMemo(() => GOBLET_BY_STAGE[stage], [stage])
 
+  useEffect(() => {
+    setImgDataUrl(null)
+    setError(null)
+    setQueryStatus('idle')
+    setQueuedMsg(null)
+  }, [cellType, stage])
+
   function submitGeneQuery() {
     const gRaw = gene.trim()
     setError(null)
@@ -395,13 +407,10 @@ export default function Scrna() {
       return
     }
 
-    // Keep epithelial email requirement while using direct image endpoints.
-    if (cellType === 'epithelial') {
-      const em = email.trim()
-      if (!em || !isValidEmail(em)) {
-        setError('A valid email is required for epithelial mode.')
-        return
-      }
+    const em = email.trim()
+    if (em && !isValidEmail(em)) {
+      setError('If you enter an email, it must be valid.')
+      return
     }
 
     setQueryStatus('loading')
@@ -411,6 +420,23 @@ export default function Scrna() {
       cellType,
     })}&_=${Date.now()}`
     setImgDataUrl(url)
+
+    if (em && isValidEmail(em)) {
+      const plotUrl = url.replace(/&_=\d+$/, '')
+      const context =
+        cellType === 'epithelial' ? 'scrna_epithelial' : 'scrna_eec'
+      void fetch('/api/email-plot-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context,
+          email: em,
+          gene: canonical,
+          sample_type: stage,
+          plot_url: plotUrl,
+        }),
+      }).catch(() => {})
+    }
   }
 
   return (
@@ -536,7 +562,7 @@ export default function Scrna() {
                     <div style={cardTitle}>{umapTitle}</div>
                   </div>
                   <div style={cardBody}>
-                    <img alt={umapTitle} src={overviewDefaults.umapSrc} style={staticImg} />
+                    <LightboxZoomImage alt={umapTitle} src={overviewDefaults.umapSrc} style={staticImg} />
                   </div>
                 </div>
                 <div style={card}>
@@ -544,7 +570,7 @@ export default function Scrna() {
                     <div style={cardTitle}>{dotTitle}</div>
                   </div>
                   <div style={cardBody}>
-                    <img alt={dotTitle} src={overviewDefaults.dotSrc} style={staticImg} />
+                    <LightboxZoomImage alt={dotTitle} src={overviewDefaults.dotSrc} style={staticImg} />
                   </div>
                 </div>
               </div>
@@ -605,9 +631,7 @@ export default function Scrna() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={fieldLabel}>
-                      Email{cellType === 'epithelial' ? ' (required for epithelial)' : ''}
-                    </span>
+                    <span style={fieldLabel}>Email (optional)</span>
                     <input
                       type="email"
                       value={email}
@@ -663,36 +687,54 @@ export default function Scrna() {
                 </div>
                 <div style={cardBody}>
                   {imgDataUrl ? (
-                    <img
-                      key={imgDataUrl}
-                      alt={resultTitle}
-                      src={imgDataUrl}
-                      style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid var(--border)' }}
-                      onLoad={() => setQueryStatus('success')}
-                      onError={() => {
-                        setQueryStatus('error')
-                        setError('This figure could not be loaded. Please try again.')
-                        setImgDataUrl(null)
-                      }}
-                    />
+                    <div style={{ position: 'relative', minHeight: RESULT_CHART_MIN_H, borderRadius: 8 }}>
+                      {queryStatus === 'loading' ? (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 12,
+                            background: '#f3f4f6',
+                            borderRadius: 8,
+                            zIndex: 1,
+                            pointerEvents: 'none',
+                          }}
+                          aria-busy
+                          aria-label="Generating plot"
+                        >
+                          <LoadingBar />
+                          <div style={{ ...phText, padding: 0 }}>Generating plot…</div>
+                        </div>
+                      ) : null}
+                      <LightboxZoomImage
+                        key={imgDataUrl}
+                        alt={resultTitle}
+                        src={imgDataUrl}
+                        style={{
+                          width: '100%',
+                          display: 'block',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          minHeight: queryStatus === 'loading' ? RESULT_CHART_MIN_H : undefined,
+                          opacity: queryStatus === 'loading' ? 0 : 1,
+                        }}
+                        onLoad={() => setQueryStatus('success')}
+                        onError={() => {
+                          setQueryStatus('error')
+                          setError('This figure could not be loaded. Please try again.')
+                          setImgDataUrl(null)
+                        }}
+                      />
+                    </div>
                   ) : (
                     <div style={placeholder}>
                       <div style={phText}>
                         {queryStatus === 'idle' ? 'Search a gene above to view its coverage plot' : 'Coverage plot result'}
                       </div>
-                      {queryStatus === 'loading' ? (
-                        <div style={{ width: '68%', height: 4, background: '#e5e7eb', borderRadius: 2, overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              height: '100%',
-                              background: 'var(--accent)',
-                              borderRadius: 2,
-                              width: '72%',
-                              animation: 'gutFadeUp 0.4s ease both',
-                            }}
-                          />
-                        </div>
-                      ) : null}
                     </div>
                   )}
                 </div>
@@ -731,7 +773,7 @@ export default function Scrna() {
                     <div style={cardTitle}>{chartTitle('scRNA', cellType, stage, 'Region Comparison', 'Small Intestine')}</div>
                   </div>
                   <div style={cardBody}>
-                    <img
+                    <LightboxZoomImage
                       alt={chartTitle('scRNA', cellType, stage, 'Region Comparison', 'Small Intestine')}
                       src={regionDefaults.smallSrc}
                       style={staticImg}
@@ -743,7 +785,7 @@ export default function Scrna() {
                     <div style={cardTitle}>{chartTitle('scRNA', cellType, stage, 'Region Comparison', 'Large Intestine')}</div>
                   </div>
                   <div style={cardBody}>
-                    <img
+                    <LightboxZoomImage
                       alt={chartTitle('scRNA', cellType, stage, 'Region Comparison', 'Large Intestine')}
                       src={regionDefaults.largeSrc}
                       style={staticImg}
@@ -785,7 +827,11 @@ export default function Scrna() {
                     <div style={cardTitle}>{chartTitle('scRNA', cellType, stage, 'Goblet Cells', 'MA Plot')}</div>
                   </div>
                   <div style={cardBody}>
-                    <img alt={chartTitle('scRNA', cellType, stage, 'Goblet Cells', 'MA Plot')} src={gobletDefaults.maSrc} style={staticImg} />
+                    <LightboxZoomImage
+                      alt={chartTitle('scRNA', cellType, stage, 'Goblet Cells', 'MA Plot')}
+                      src={gobletDefaults.maSrc}
+                      style={staticImg}
+                    />
                   </div>
                 </div>
                 <div style={card}>
@@ -793,7 +839,7 @@ export default function Scrna() {
                     <div style={cardTitle}>{chartTitle('scRNA', cellType, stage, 'Goblet Cells', 'Violin Plot')}</div>
                   </div>
                   <div style={cardBody}>
-                    <img
+                    <LightboxZoomImage
                       alt={chartTitle('scRNA', cellType, stage, 'Goblet Cells', 'Violin Plot')}
                       src={gobletDefaults.violinSrc}
                       style={staticImg}

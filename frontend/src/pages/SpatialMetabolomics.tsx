@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
+import { LightboxZoomImage } from '../components/LightboxZoomImage'
 
 /** Legacy `frontend-old/js/sm.js` geometry (3000×15600 reference frame). */
 const GLB_LEFT_RATIO = 558 / 3000
@@ -488,7 +489,7 @@ function SpatialMetaMap({
       <div className="sm-map-viewport">
         <div ref={scrollContainerRef} className="sm-scroll-container">
           <div className="sm-image-container" style={{ width: `${imageInnerWidthPct}%` }}>
-            <img
+            <LightboxZoomImage
               className="sm-select-img"
               src="/imgs/spatial_meta.png"
               alt="Spatial metabolomics overview — vertical metabolite strips"
@@ -538,7 +539,7 @@ function DetailFigure({
   }
   return (
     <div style={{ padding: 12 }}>
-      <img className="sm-detail-img" src={src} alt={alt} onError={() => setOk(false)} />
+      <LightboxZoomImage className="sm-detail-img" src={src} alt={alt} onError={() => setOk(false)} />
     </div>
   )
 }

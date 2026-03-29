@@ -5,10 +5,8 @@ import {
   Button,
   IconButton,
   InputBase,
-  Modal,
   Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
 import ArrowOutwardOutlinedIcon from "@mui/icons-material/ArrowOutwardOutlined";
 import { ButtonBase, Stack } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
@@ -17,6 +15,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import NavBar from "../components/NavBar";
+import { LightboxZoomImage } from "../components/LightboxZoomImage";
 
 // ----------------------
 // Types
@@ -82,9 +81,6 @@ export default function AIChat() {
   const [input, setInput] = useState<string>("");
   const [waiting, setWaiting] = useState<boolean>(false);
 
-  const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
-  const [lightboxImage, setLightboxImage] = useState<string>("");
-
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -92,16 +88,6 @@ export default function AIChat() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages]);
-
-  const handleImageClick = (src: string) => {
-    setLightboxImage(src);
-    setLightboxOpen(true);
-  };
-
-  const handleCloseLightbox = () => {
-    setLightboxOpen(false);
-    setLightboxImage("");
-  };
 
   const clearHistory = () => {
     if (waiting) return;
@@ -455,17 +441,15 @@ export default function AIChat() {
                         )}
 
                         {/* The actual image (hidden until loaded) */}
-                        <img
+                        <LightboxZoomImage
                           src={msg.content}
-                          alt="response"
+                          alt="Assistant response image"
                           style={{
                             maxWidth: "100%",
                             maxHeight: 400,
-                            cursor: "pointer",
                             display: getImgStatus(idx) === "loaded" ? "block" : "none",
                             borderRadius: "8px",
                           }}
-                          onClick={() => handleImageClick(msg.content)}
                           onLoad={() => setImgStatus((prev) => ({ ...prev, [idx]: "loaded" }))}
                           onError={() => setImgStatus((prev) => ({ ...prev, [idx]: "error" }))}
                         />
@@ -928,52 +912,6 @@ export default function AIChat() {
         </Typography>
       </Box>
 
-      {/* Lightbox for images */}
-      <Modal
-        open={lightboxOpen}
-        onClose={handleCloseLightbox}
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          p: 2,
-        }}
-      >
-        <Box
-          sx={{
-            position: "relative",
-            maxWidth: "92vw",
-            maxHeight: "92vh",
-            bgcolor: "background.paper",
-            borderRadius: "8px",
-            p: 1,
-          }}
-        >
-          <IconButton
-            onClick={handleCloseLightbox}
-            sx={{
-              position: "absolute",
-              right: 8,
-              top: 8,
-              bgcolor: "rgba(0,0,0,0.55)",
-              color: "white",
-              "&:hover": { bgcolor: "rgba(0,0,0,0.75)" },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-
-          <img
-            src={lightboxImage}
-            alt="Full size"
-            style={{
-              maxWidth: "90vw",
-              maxHeight: "90vh",
-              display: "block",
-            }}
-          />
-        </Box>
-      </Modal>
     </Box>
   );
 }
