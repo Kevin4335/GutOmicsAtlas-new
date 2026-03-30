@@ -484,6 +484,63 @@ def _format_paper_evidence(hits: list, query: str) -> str:
 # Timeout for fetching plot images from the R backend (seconds).
 # R plot generation can be slow on first call; 120s gives it room to breathe.
 _PLOT_FETCH_TIMEOUT = 120
+# Anthropic vision API rejects images if width or height > 8000px. Keep max side well below.
+_ANTHROPIC_IMAGE_MAX_SIDE = int(os.environ.get("ANTHROPIC_IMAGE_MAX_SIDE", "4096"))
+
+
+def _png_bytes_for_anthropic_vision(png_bytes: bytes) -> bytes:
+    """Downscale PNG so longest side <= _ANTHROPIC_IMAGE_MAX_SIDE (Claude API hard limit 8000px).
+
+    Only used for base64 sent to Anthropic. Frontend still uses full-resolution URLs / data URIs.
+    Requires Pillow: ``pip install Pillow``.
+    """
+    if not png_bytes or len(png_bytes) < 24:
+        return png_bytes
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:
+        print(
+            "ai.py: Pillow not installed; cannot downscale images for Claude. "
+            "Install with: pip install Pillow"
+        )
+        return png_bytes
+    try:
+        im = Image.open(BytesIO(png_bytes))
+        im.load()
+    except Exception as e:
+        print(f"_png_bytes_for_anthropic_vision: invalid PNG ({e})")
+        return png_bytes
+    w, h = im.size
+    limit = min(_ANTHROPIC_IMAGE_MAX_SIDE, 7999)
+    if max(w, h) <= limit:
+        return png_bytes
+    scale = limit / float(max(w, h))
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    try:
+        resample = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample = Image.LANCZOS  # type: ignore[attr-defined]
+    try:
+        resized = im.resize((new_w, new_h), resample)
+        out = BytesIO()
+        if resized.mode in ("RGBA", "LA"):
+            resized.save(out, format="PNG", optimize=True)
+        elif resized.mode == "P":
+            if "transparency" in resized.info:
+                resized.save(out, format="PNG", optimize=True)
+            else:
+                resized.convert("RGB").save(out, format="PNG", optimize=True)
+        elif resized.mode == "L":
+            resized.save(out, format="PNG", optimize=True)
+        else:
+            resized.convert("RGB").save(out, format="PNG", optimize=True)
+        return out.getvalue()
+    except Exception as e:
+        print(f"_png_bytes_for_anthropic_vision: resize/save failed ({e})")
+        return png_bytes
 
 
 def _fetch_png_bytes(url: str) -> Union[bytes, None]:
@@ -516,7 +573,8 @@ def _image_tool_result(description: str, png_bytes: Union[bytes, None], url: str
         - display_msg: dict for the frontend {"type": "image", "content": url}
     """
     if png_bytes:
-        b64 = binToBase64(png_bytes)
+        for_claude = _png_bytes_for_anthropic_vision(png_bytes)
+        b64 = binToBase64(for_claude)
         tool_result_content = [
             {
                 "type": "image",
@@ -621,14 +679,16 @@ def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[d
         try:
             with open(static_path, "rb") as f:
                 png_bytes = f.read()
-            b64 = binToBase64(png_bytes)
+            for_claude = _png_bytes_for_anthropic_vision(png_bytes)
+            b64_claude = binToBase64(for_claude)
+            b64_display = binToBase64(png_bytes)
             tool_result_content = [
                 {
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": "image/png",
-                        "data": b64,
+                        "data": b64_claude,
                     },
                 },
                 {
@@ -636,7 +696,7 @@ def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[d
                     "text": f"Default overview image '{image_name}' loaded from imgs/ai/.",
                 },
             ]
-            display_msg = {"type": "image", "content": "data:image/png;base64," + b64}
+            display_msg = {"type": "image", "content": "data:image/png;base64," + b64_display}
             return tool_result_content, display_msg
         except OSError:
             return (

@@ -1,0 +1,2 @@
+# Used by ai.py to downscale PNGs before sending to Anthropic vision API (max dimension limit).
+Pillow>=10.0.0
