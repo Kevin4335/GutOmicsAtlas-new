@@ -9,6 +9,7 @@ import {
 } from "@mui/material";
 import ArrowOutwardOutlinedIcon from "@mui/icons-material/ArrowOutwardOutlined";
 import NavBar from "../components/NavBar";
+import { ChatOptionsButton } from "../components/ChatOptionsButton";
 import mainBackground from "../assets/main_background.svg";
 
 // Example prompts
@@ -118,7 +119,9 @@ export default function AILanding() {
                 },
               }}
             />
-            {/* Send button - bottom right, red circle with white arrow */}
+            <Box sx={{ position: "absolute", bottom: 12, left: 12 }}>
+              <ChatOptionsButton />
+            </Box>
             <IconButton
               onClick={() => handleSubmit()}
               sx={{

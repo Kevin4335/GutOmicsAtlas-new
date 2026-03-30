@@ -151,17 +151,21 @@ TOOLS = [
     {
         "name": "glkb_ai_assistant",
         "description": (
-            "Ask a question to the GLKB (Genomic Literature Knowledge Base) AI assistant. "
-            "The GLKB assistant can only see the question string — it has no access to "
-            "chat history, so provide all necessary background and context in the question. "
-            "The result will be displayed to the user directly."
+            "GLKB (literature KB) Q&A. Pass a single self-contained question string. "
+            "GLKB often returns nothing if the question is too vague or conversational — "
+            "use a concrete, literature-retrieval-style query (see planner instructions), "
+            "not necessarily the user's raw wording."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "The full question to send to GLKB, including all needed context.",
+                    "description": (
+                        "Standalone biomedical / literature question for GLKB to search. "
+                        "Must be specific enough for retrieval (entities, tissue, mechanism). "
+                        "Reformulate broad or personal user prompts into neutral research questions."
+                    ),
                 },
             },
             "required": ["question"],
@@ -225,6 +229,16 @@ PLANNER_TOOL = [
     }
 ]
 
+
+def _planner_tool_for_session(glkb_enabled: bool) -> list:
+    """Planner create_plan schema: drop glkb_ai_assistant from enum when user disabled GLKB."""
+    tools = deepcopy(PLANNER_TOOL)
+    enum_key = tools[0]["input_schema"]["properties"]["steps"]["items"]["properties"]["tool"]
+    if not glkb_enabled:
+        enum_key["enum"] = [x for x in enum_key["enum"] if x != "glkb_ai_assistant"]
+    return tools
+
+
 PLANNER_SYSTEM_PROMPT = """You are the planner for GutOmicsAtlas AI assistant.
 
 Your ONLY job is to call the `create_plan` tool with a list of tool calls needed to answer the user's request.
@@ -262,9 +276,25 @@ Parameters:
       "st_umap_dot", "st_duodenum_colon"
 
 ### glkb_ai_assistant
-GLKB literature-backed Q&A (no chat history on GLKB side — put full context in `question`).
+GLKB answers from biomedical literature. **GLKB only receives `question` — no chat history.**
+
 Parameters:
-  - question: string
+  - question: string — **must be a literature-ready sub-query you craft**, not always the user's exact words.
+
+**Critical — reformulate vague or non-retrieval prompts:**  
+GLKB frequently refuses or fails on questions that are too general, chatty, or personal. When you call this tool, **invent a focused sub-question** that:
+- Names concrete biological entities (genes, cell types, tissues, pathways, diseases) when relevant.
+- Asks what **published literature / reviews** report, summarize, or compare — e.g. roles, mechanisms, associations, definitions in a research context.
+- Stays **neutral** (no "should I …" personal advice in the string sent to GLKB); translate lifestyle-style asks into "what does the literature describe about … and human gut / intestinal …?".
+- Is **not** so narrow that it assumes unstated facts; ground it in the user's topic.
+
+**Examples of user message → `question` you pass to GLKB (illustrative):**
+- User: "What is the gut?" → `question`: "What do recent biomedical reviews describe regarding the structure, major cell lineages, and physiological functions of the human gut?"
+- User: "Tell me about stem cells in the intestine" → `question`: "What does the literature report about intestinal stem cell markers, niche signaling, and turnover in the adult human gut?"
+- User: "Should I eat more fermented foods?" → `question`: "What does peer-reviewed literature summarize about fermented foods, their microbial content, and associations with human gut microbiome composition or intestinal health?" (neutral; no endorsement.)
+- User: "What's BRCA1?" (gut-unrelated but user asked) → still use a tight literature question: "What is the established role of BRCA1 in DNA repair and cancer predisposition according to biomedical literature?"
+
+**Bad `question` values (too vague for GLKB):** "What is the gut?", "Help me", "Should I drink X?" as the **literal** string — always **rewrite** as above.
 
 ## Rules
 
@@ -277,6 +307,7 @@ Parameters:
 
 **glkb_ai_assistant:**
 - Call for broad biology, pathways, disease mechanisms, or literature context not answered by a plot alone.
+- **Always** pass a reformulated `question` when the user's wording is too broad or non-scientific for a search backend.
 - Do NOT call for pure UI help ("what tabs exist?") unless they need literature.
 
 **Combining tools:**
@@ -305,7 +336,10 @@ User: "Overview of snATAC epithelial defaults"
 Plan: static_images(name="snATAC_Epithelial")
 
 User: "What does GLP1R do in the gut and show enteroendocrine fetal expression"
-Plan: glkb_ai_assistant(question="...") + scRNA(gene="GLP1R", cell_type="enteroendocrine", sample_type="fetal")
+Plan: glkb_ai_assistant(question="What does the literature describe about GLP1R expression and function in enteroendocrine cells and the human gut?") + scRNA(gene="GLP1R", cell_type="enteroendocrine", sample_type="fetal")
+
+User: "What is the gut?"
+Plan: glkb_ai_assistant(question="What do biomedical reviews summarize about human gut anatomy, epithelial and immune cell types, and digestive/absorptive functions?")
 
 User: "Hi"
 Plan: steps: []
@@ -334,7 +368,7 @@ When the user asks to visualize or show data, the planner has already run the to
 - spatial_transcriptomics: ST figures for genes in the site list.
 - spatial_metabolomics: metabolite slide images (exact metabolite names).
 - static_images: pre-made overview PNGs for each major page.
-- glkb_ai_assistant: GLKB answers (you will see the returned text in tool results).
+- glkb_ai_assistant: GLKB answers (you will see the returned text in tool results). The planner may have asked GLKB a **reformulated** literature question; answer the **user's** original question clearly, using GLKB text as evidence.
 
 After image tool results, briefly interpret what the figure shows (expression pattern, accessibility, spatial layout) in gut-relevant terms.
 
@@ -598,7 +632,11 @@ def _image_tool_result(description: str, png_bytes: Union[bytes, None], url: str
     return tool_result_content, display_msg
 
 
-def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[dict, None]]:
+def execute_tool(
+    name: str,
+    tool_input: dict,
+    agent_options: Union[Dict[str, Any], None] = None,
+) -> Tuple[Union[str, list], Union[dict, None]]:
     """Execute a single tool call.
 
     Returns:
@@ -608,6 +646,9 @@ def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[d
           Claude can see and reason about the generated figure.
         - display_msg: optional dict for the frontend ({"type": "image"/"text", "content": ...})
     """
+    opts = agent_options if isinstance(agent_options, dict) else {}
+    glkb_on = opts.get("glkb", True) is not False
+
     base = PLOT_BACKEND_BASE.rstrip("/")
     data_base = GUT_PUBLIC_DATA_BASE.rstrip("/")
 
@@ -705,6 +746,9 @@ def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[d
             )
 
     if name == "glkb_ai_assistant":
+        if not glkb_on:
+            msg = "GLKB is turned off in chat options. Enable it under the + menu to use the literature assistant."
+            return (msg, {"type": "text", "content": msg})
         question = tool_input["question"]
         success, answer = glkb_chat(question)
         if not success:
@@ -724,7 +768,10 @@ def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[d
 # Parallel executor — runs all planned tool calls concurrently
 # ---------------------------------------------------------------------------
 
-def execute_plan_parallel(steps: List[dict]) -> List[Tuple[Union[str, list], Union[dict, None]]]:
+def execute_plan_parallel(
+    steps: List[dict],
+    agent_options: Union[Dict[str, Any], None] = None,
+) -> List[Tuple[Union[str, list], Union[dict, None]]]:
     """Execute a list of planned tool calls concurrently.
 
     Each step is {"tool": name, "input": {...}}.
@@ -737,7 +784,7 @@ def execute_plan_parallel(steps: List[dict]) -> List[Tuple[Union[str, list], Uni
 
     with ThreadPoolExecutor(max_workers=min(8, len(steps))) as pool:
         futures = {
-            pool.submit(execute_tool, s["tool"], s["input"]): i
+            pool.submit(execute_tool, s["tool"], s["input"], agent_options): i
             for i, s in enumerate(steps)
         }
         for future in as_completed(futures):
@@ -756,7 +803,10 @@ def execute_plan_parallel(steps: List[dict]) -> List[Tuple[Union[str, list], Uni
 # Core Claude call: Planner → Parallel Executor → Synthesizer
 # ---------------------------------------------------------------------------
 
-def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
+def get_gpt_resp(
+    history: list,
+    agent_options: Union[Dict[str, Any], None] = None,
+) -> Tuple[bool, str, list]:
     """Three-phase pipeline: Planner → Parallel Executor → Synthesizer.
 
     Phase 1 (Planner): A dedicated Claude call with tool_choice forced to
@@ -769,19 +819,33 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
     Fallback: if the planner outputs steps=[], Phase 2 is skipped and Phase 3
         is a direct text-only call (no tools), e.g. for pure biology questions.
 
+    agent_options: e.g. {"glkb": False} to forbid GLKB tool use (frontend + menu).
+
     Returns: (success, error_msg, frontend_messages)
     """
     try:
+        opts: Dict[str, Any] = {"glkb": True}
+        if isinstance(agent_options, dict):
+            opts["glkb"] = agent_options.get("glkb", True) is not False
+        glkb_on = bool(opts["glkb"])
+
         user_q = _latest_user_text(history)
         MAX_QUERY_CHARS = 1200
         user_q = user_q[:MAX_QUERY_CHARS]
 
         # Paper RAG disabled for GutOmicsAtlas (paper_search is a stub returning []).
-        paper_section = (
-            "## 4. Context note (no project paper RAG)\n"
-            "This deployment does not attach indexed paper excerpts. "
-            "Use GLKB tool results when present, visualization tool results, and general reasoning.\n"
-        )
+        if glkb_on:
+            paper_section = (
+                "## 4. Context note (no project paper RAG)\n"
+                "This deployment does not attach indexed paper excerpts. "
+                "Use GLKB tool results when present, visualization tool results, and general reasoning.\n"
+            )
+        else:
+            paper_section = (
+                "## 4. Context note\n"
+                "The user disabled GLKB (literature assistant) for this message. "
+                "Do not state that GLKB was consulted. Rely on visualization tools and general reasoning only.\n"
+            )
 
         anthropic_msgs = _flat_to_anthropic(history)
         collected_messages: List[dict] = []
@@ -790,6 +854,22 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
         # Phase 1 — Planner
         # -------------------------------------------------------------------
         planner_system = PLANNER_SYSTEM_PROMPT + "\n\n" + paper_section
+        if glkb_on:
+            planner_system += (
+                "\n\n## User enabled GLKB (literature mode)\n"
+                "Whenever you call glkb_ai_assistant, set `question` to a **crafted literature sub-query** — "
+                "concrete, neutral, and searchable — as in the reformulation examples above. "
+                "Never send GLKB a bare overly-general or personal user sentence if a tighter biomedical question fits their intent.\n"
+            )
+        if not glkb_on:
+            planner_system += (
+                "\n\n## CRITICAL: GLKB disabled by user\n"
+                "The user turned OFF the GLKB literature tool for this request. "
+                "You MUST NOT include glkb_ai_assistant in create_plan steps. "
+                "Use only visualization/static tools, or an empty steps list.\n"
+            )
+
+        planner_tools = _planner_tool_for_session(glkb_on)
 
         planner_resp = client.messages.create(
             model=anthropic_model,
@@ -797,7 +877,7 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
             messages=anthropic_msgs,
             max_tokens=1024,
             system=planner_system,
-            tools=PLANNER_TOOL,
+            tools=planner_tools,
             tool_choice={"type": "tool", "name": "create_plan"},
         )
 
@@ -810,6 +890,9 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
 
         steps: List[dict] = plan_input.get("steps", [])
         intro_text: str = plan_input.get("intro_text", "").strip()
+
+        if not glkb_on:
+            steps = [s for s in steps if isinstance(s, dict) and s.get("tool") != "glkb_ai_assistant"]
 
         print(f"======== Planner: {len(steps)} step(s): {[s['tool'] for s in steps]}")
         log_queue.put(json.dumps({"planner": plan_input}, ensure_ascii=False))
@@ -828,7 +911,7 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
             for s in steps:
                 print(f"  -> planned: {s['tool']}({s['input']})")
 
-            exec_results = execute_plan_parallel(steps)
+            exec_results = execute_plan_parallel(steps, opts)
 
             for i, (result_content, display_msg) in enumerate(exec_results):
                 if display_msg:
@@ -846,6 +929,10 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
         # Phase 3 — Synthesizer
         # -------------------------------------------------------------------
         synthesizer_system = PROMPT + "\n\n" + paper_section
+        if not glkb_on:
+            synthesizer_system += (
+                "\nThe user disabled GLKB for this turn; do not imply a literature lookup was performed.\n"
+            )
 
         # Build the synthesizer message history.
         # We inject a fake assistant turn that "called" the planned tools,
@@ -1096,6 +1183,39 @@ def process_ai_chat(request, path: str):
         return
 
     user_input = request.rfile.read(cl).decode("utf-8", errors="replace")
+    agent_options: Dict[str, Any] = {"glkb": True}
+
+    try:
+        payload = json.loads(user_input)
+    except json.JSONDecodeError:
+        bad = b"Invalid JSON body"
+        request.send_response(400)
+        request.send_header("Connection", "keep-alive")
+        request.send_header("Content-Length", len(bad))
+        request.send_header("Access-Control-Allow-Origin", "*")
+        request.end_headers()
+        request.wfile.write(bad)
+        request.wfile.flush()
+        return
+
+    if isinstance(payload, list):
+        history = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("history"), list):
+        history = payload["history"]
+        o = payload.get("options")
+        if isinstance(o, dict):
+            agent_options["glkb"] = o.get("glkb", True) is not False
+    else:
+        bad = b'Expected a JSON array of messages or {"history":[...],"options":{"glkb":true}}'
+        request.send_response(400)
+        request.send_header("Connection", "keep-alive")
+        request.send_header("Content-Length", len(bad))
+        request.send_header("Access-Control-Allow-Origin", "*")
+        request.end_headers()
+        request.wfile.write(bad)
+        request.wfile.flush()
+        return
+
     if within_rate_limit() == False:
         request.send_response(429)
         request.send_header('Connection', 'keep-alive')
@@ -1106,7 +1226,6 @@ def process_ai_chat(request, path: str):
         request.wfile.flush()
         return
 
-    history: list = json.loads(user_input)
     MAX_TURNS = 30
     if isinstance(history, list) and len(history) > MAX_TURNS:
         history = history[-MAX_TURNS:]
@@ -1122,8 +1241,10 @@ def process_ai_chat(request, path: str):
 
     history = [_trim_msg_content(m) for m in history if isinstance(m, dict)]
 
-    log_queue.put(json.dumps({'history': history}, ensure_ascii=False))
-    success, error_msg, messages = get_gpt_resp(history)
+    log_queue.put(
+        json.dumps({"history": history, "options": agent_options}, ensure_ascii=False)
+    )
+    success, error_msg, messages = get_gpt_resp(history, agent_options)
 
     if error_msg:
         request.send_response(500)

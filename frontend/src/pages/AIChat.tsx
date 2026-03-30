@@ -16,12 +16,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import NavBar from "../components/NavBar";
 import { LightboxZoomImage } from "../components/LightboxZoomImage";
+import { ChatOptionsButton } from "../components/ChatOptionsButton";
+import { enabledToolLabels, readAIChatOptions } from "../aiChatOptions";
 
 // ----------------------
 // Types
 // ----------------------
 type DisplayMessage =
-  | { type: "user"; content: string }
+  | { type: "user"; content: string; enabledTools?: string[] }
   | { type: "text"; content: string }
   | { type: "image"; content: string };
 
@@ -136,7 +138,15 @@ export default function AIChat() {
         return [];
       }
     }
-    return initialInput ? [{ type: "user", content: initialInput }] : [];
+    return initialInput
+      ? [
+          {
+            type: "user",
+            content: initialInput,
+            enabledTools: enabledToolLabels(readAIChatOptions()),
+          },
+        ]
+      : [];
   });
 
   const [input, setInput] = useState<string>("");
@@ -182,7 +192,11 @@ export default function AIChat() {
 
     setWaiting(true);
 
-    const userMsg: DisplayMessage = { type: "user", content: trimmed };
+    const userMsg: DisplayMessage = {
+      type: "user",
+      content: trimmed,
+      enabledTools: enabledToolLabels(readAIChatOptions()),
+    };
 
     const openaiHistory: HistoryItem[] = [
       ...(JSON.parse(localStorage.getItem(LS_OPENAI) || "[]") as HistoryItem[]),
@@ -203,7 +217,10 @@ export default function AIChat() {
         const res = await fetch(AI_CHAT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(openaiHistory),
+          body: JSON.stringify({
+            history: openaiHistory,
+            options: readAIChatOptions(),
+          }),
         });
 
         if (!res.ok) {
@@ -406,6 +423,12 @@ export default function AIChat() {
 
             if (isUser) {
               // User message - right aligned, pink bubble
+              const toolsLine =
+                msg.enabledTools !== undefined
+                  ? msg.enabledTools.length > 0
+                    ? msg.enabledTools.join(", ")
+                    : "none"
+                  : null;
               return (
                 <Box
                   key={idx}
@@ -417,24 +440,49 @@ export default function AIChat() {
                   <Box
                     sx={{
                       maxWidth: "70%",
-                      px: 1.5,
-                      py: 1,
-                      borderRadius: "12px",
-                      backgroundColor: "var(--accent-light)",
-                      color: "#000000",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 0.35,
                     }}
                   >
-                    <Typography
+                    <Box
                       sx={{
-                        fontSize: "0.9rem",
-                        lineHeight: 1.65,
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                        letterSpacing: "0.01em",
+                        maxWidth: "100%",
+                        px: 1.5,
+                        py: 1,
+                        borderRadius: "12px",
+                        backgroundColor: "var(--accent-light)",
+                        color: "#000000",
                       }}
                     >
-                      {msg.content}
-                    </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: "0.9rem",
+                          lineHeight: 1.65,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          letterSpacing: "0.01em",
+                        }}
+                      >
+                        {msg.content}
+                      </Typography>
+                    </Box>
+                    {toolsLine !== null && (
+                      <Typography
+                        component="div"
+                        sx={{
+                          fontSize: "0.6875rem",
+                          lineHeight: 1.35,
+                          color: THINK_GRAY_2,
+                          letterSpacing: "0.02em",
+                          px: 0.25,
+                          textAlign: "right",
+                        }}
+                      >
+                        Enabled tools: {toolsLine}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
               );
@@ -920,7 +968,9 @@ export default function AIChat() {
               },
             }}
           />
-          {/* Send button */}
+          <Box sx={{ position: "absolute", bottom: 12, left: 12 }}>
+            <ChatOptionsButton disabled={waiting} />
+          </Box>
           <IconButton
             onClick={handleSend}
             disabled={waiting}
@@ -933,14 +983,11 @@ export default function AIChat() {
               backgroundColor: "var(--accent)",
               width: 36,
               height: 36,
-
-              // remove focus ring / persistent outline
               outline: "none",
               boxShadow: "none",
               "&:focus": { outline: "none", boxShadow: "none" },
               "&:focus-visible": { outline: "none", boxShadow: "none" },
               "&.Mui-focusVisible": { outline: "none", boxShadow: "none" },
-
               "&:hover": { backgroundColor: "#a00d16" },
               "&:disabled": { backgroundColor: "#cccccc" },
             }}
