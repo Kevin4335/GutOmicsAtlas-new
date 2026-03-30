@@ -127,7 +127,7 @@ assert (sha256(PROMPT.encode('utf-8')).hexdigest() == '0aad2d1e9bb3f063ed3ad8404
 # print(sha256(PROMPT.encode('utf-8')).hexdigest())
 # raise
 
-from config import api_key
+from config import api_key, anthropic_model
 
 client = anthropic.Anthropic(api_key=api_key)
 
@@ -203,19 +203,23 @@ def get_gpt_resp(history: list) -> Tuple[bool, str, str]:
         trial -= 1
         try:
             response = client.messages.create(
-                model = 'claude-3-5-sonnet-20241022',
+                model=anthropic_model,
                 temperature=0.2,
                 messages=history,
-                # top_p=1.0,
-                top_k=1000,
                 max_tokens=3072,
-                system=PROMPT
+                system=PROMPT,
             )
             result = response.content[0].text
             print(result)
             log_queue.put(json.dumps({'history': history, 'response': result}, ensure_ascii=False))
-        except:
-            # will not retry if ChatGPT API fails
+        except Exception:
+            tb = traceback.format_exc()
+            print(tb)
+            try:
+                log_queue.put(json.dumps({'anthropic_request_failed': tb}, ensure_ascii=False))
+            except Exception:
+                pass
+            # will not retry if Claude API fails (empty history, auth, network, model, etc.)
             return (False, 'Failed to get the response from GPT. Please copy your input, refresh the page and try again.', '')
         try:
             check_format(result)
@@ -316,7 +320,39 @@ def process_ai_chat(request, path:str):
         request.wfile.write(b'')
         request.wfile.flush()
         return
-    history:list = json.loads(user_input)
+    try:
+        history: list = json.loads(user_input)
+    except json.JSONDecodeError:
+        bad = b'Invalid JSON body'
+        request.send_response(400)
+        request.send_header('Connection', 'keep-alive')
+        request.send_header('Content-Length', len(bad))
+        request.send_header('Access-Control-Allow-Origin', '*')
+        request.end_headers()
+        request.wfile.write(bad)
+        request.wfile.flush()
+        return
+    if not isinstance(history, list) or len(history) == 0:
+        bad = b'History must be a non-empty JSON array of {role, content} objects (same as the browser sends).'
+        request.send_response(400)
+        request.send_header('Connection', 'keep-alive')
+        request.send_header('Content-Length', len(bad))
+        request.send_header('Access-Control-Allow-Origin', '*')
+        request.end_headers()
+        request.wfile.write(bad)
+        request.wfile.flush()
+        return
+    for item in history:
+        if not isinstance(item, dict) or item.get('role') not in ('user', 'assistant') or not isinstance(item.get('content'), str):
+            bad = b'Each history item must be {"role": "user"|"assistant", "content": "<string>"}.'
+            request.send_response(400)
+            request.send_header('Connection', 'keep-alive')
+            request.send_header('Content-Length', len(bad))
+            request.send_header('Access-Control-Allow-Origin', '*')
+            request.end_headers()
+            request.wfile.write(bad)
+            request.wfile.flush()
+            return
     error_msg = ''
     log_queue.put(json.dumps({'history': history}, ensure_ascii=False))
     success, error_msg, result = get_gpt_resp(history)
