@@ -1,26 +1,23 @@
-# GutOmicsAtlas — webserver ops (Python + React + R)
+# GutOmicsAtlas — Web Application & Services
 
-This repo runs as:
+GutOmicsAtlas is a biomedical web application comprising:
 
-- **Python webserver**: `server.py` (serves the React build + API endpoints like `POST /chat`)
-- **R plot backends**: multiple `Rscript` processes (httpuv) started in `screen`
-- **React frontend**: built into `frontend/dist/` and served by `server.py`
+- **Python webserver** (`server.py`) serving the React single-page application and API endpoints (including `POST /chat`)
+- **React frontend** (`frontend/`) built into `frontend/dist/` for production serving
+- **R visualization backends** (httpuv) providing plot generation, managed as background `screen` sessions
 
-The *operational* way to restart things on the server is via:
-
-- `utils/restart_r_servers.sh`
-- `utils/restart_webserver.sh`
+This repository includes scripted operational workflows for reproducible restarts on a Linux host.
 
 ---
 
-## Prerequisites (server machine)
+## System requirements
 
-- **Python 3** + pip packages from `requirements.txt`
-- **Node.js 18+** + npm (needed because `restart_webserver.sh` does `npm install` + `npm run build`)
-- **GNU screen** and **lsof** (both scripts rely on them)
-- **R** + whatever R packages your scripts expect
+- **Python 3** and pip
+- **Node.js 18+** and npm (required for `npm install` / `npm run build`)
+- **R** (for the plot backends)
+- **GNU screen** and **lsof** (used by the restart scripts)
 
-Ubuntu/Debian helpers:
+On Ubuntu/Debian:
 
 ```bash
 sudo apt-get update
@@ -29,82 +26,91 @@ sudo apt-get install -y screen lsof
 
 ---
 
-## Python dependencies
+## Installation (Python)
+
+From the repository root:
 
 ```bash
 cd /home/ubuntu/website/webserver
 python3 -m pip install -r requirements.txt
 ```
 
-> `myBasics`, `mySecrets`, `myHttp` are internal-but-installable packages here; they are included in `requirements.txt`.
+`requirements.txt` includes internal-but-installable packages (e.g. `myBasics`, `mySecrets`, `myHttp`) in addition to third‑party dependencies.
 
 ---
 
-## Restart the R backends
+## R dependencies (plot backends)
 
-`utils/restart_r_servers.sh` kills existing `screen` sessions and any processes bound to the known ports, then restarts the R servers in detached `screen` sessions.
+If the R backends fail due to missing packages, install the required Bioconductor + CRAN dependencies via `@utils/install_packages.R`:
+
+```bash
+cd /home/ubuntu/website/webserver
+Rscript utils/install_packages.R
+```
+
+If you need to pin `ggplot2` to a specific version for compatibility, `@utils/downgrade_ggplot2.R` provides a reproducible downgrade:
+
+```bash
+cd /home/ubuntu/website/webserver
+Rscript utils/downgrade_ggplot2.R
+```
+
+---
+
+## Operational restart procedures
+
+### Restart R plot services
+
+`utils/restart_r_servers.sh` stops existing R `screen` sessions, clears any processes bound to the known ports, and restarts the backends in detached `screen` sessions:
 
 ```bash
 cd /home/ubuntu/website/webserver
 bash utils/restart_r_servers.sh
 ```
 
-### What it starts
+The script starts the following services:
 
-- **`gut_scrna_epi`**: port **9025** (`resources/scRNAfunction.R`)
-- **`gut_atac_all`**: port **9026** (`resources/atacallcells.R`)
-- **`gut_atac_epi`**: port **9027** (`resources/atacepithelial.R`)
-- **`gut_scrna_eec`**: port **9028** (`resources/EECplot.R`)
+- **`gut_scrna_epi`** on **9025** (`resources/scRNAfunction.R`)
+- **`gut_atac_all`** on **9026** (`resources/atacallcells.R`)
+- **`gut_atac_epi`** on **9027** (`resources/atacepithelial.R`)
+- **`gut_scrna_eec`** on **9028** (`resources/EECplot.R`)
 
-### Inspect / attach to a session
+To inspect a service:
 
 ```bash
 screen -ls
 screen -r gut_scrna_epi
 ```
 
-Detach: `Ctrl+A`, then `D`.
+Detach from a session with `Ctrl+A`, then `D`.
 
----
+### Restart the web application (build + serve)
 
-## Restart the Python webserver (+ build frontend)
+`utils/restart_webserver.sh` performs a production frontend build and restarts the Python server in a detached `screen` session:
 
-`utils/restart_webserver.sh` does the following:
-
-- stops existing `screen` sessions that look like prior webservers
-- kills anything on **port 80** (backup)
-- runs `npm install` + `npm run build` in `frontend/` (produces `frontend/dist/`)
-- starts `python3 server.py` inside a detached `screen` session named **`webserver`**
-- writes a log to **`/tmp/webserver_screen.log`**
+- stops prior webserver `screen` sessions
+- frees **port 80** (backup kill step)
+- runs `npm install` and `npm run build` under `frontend/` (producing `frontend/dist/`)
+- starts `python3 server.py` inside a `screen` session named **`webserver`**
+- writes logs to **`/tmp/webserver_screen.log`**
 
 ```bash
 cd /home/ubuntu/website/webserver
 bash utils/restart_webserver.sh
 ```
 
-### Inspect / attach to the webserver
+To inspect the running webserver:
 
 ```bash
 screen -ls
 screen -r webserver
 ```
 
-If the screen session exits immediately, check:
-
-- `/tmp/webserver_screen.log`
+If the session exits unexpectedly, consult `/tmp/webserver_screen.log`.
 
 ---
 
-## Common gotchas
+## Notes on deployment
 
-### Frontend build fails
-
-`restart_webserver.sh` will warn if `npm run build` fails. In that case, the Python server may still start, but `/` may not serve the React UI correctly until `frontend/dist/` exists.
-
-### Port 80 requires privileges
-
-The script expects the server to bind **port 80**. If you run as a non-root user and binding fails, either:
-
-- run the restart script as root, or
-- change the server to bind a high port and put a reverse proxy in front (nginx), or
-- change the script to kill/check a different port.
+- **Frontend build availability**: If `npm run build` fails, the Python server may still start, but the React UI may not be served correctly until `frontend/dist/` exists.
+- **Port binding**: Binding to **port 80** typically requires elevated privileges or capabilities. If running as a non-root user, deploy behind a reverse proxy (e.g. nginx) on 80/443 and run the Python server on a high port, or adjust the restart script accordingly.
