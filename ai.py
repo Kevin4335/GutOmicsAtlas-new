@@ -2,139 +2,366 @@ from R_http import *
 from utils import *
 from mySecrets import hexToStr
 from openai import OpenAI
-from time import time
+import time
+from queue import Queue
 import json
 from random import randint
-from typing import Union, Literal, Tuple
+from typing import Union, Literal, Tuple, List, Dict, Any
 from myBasics import binToBase64
 from hashlib import sha256
-from queue import Queue
 from _thread import start_new_thread
 from copy import deepcopy
 import anthropic
 import traceback
 import secrets
 import openai
+import requests
+from config import API_KEY, anthropic_model
+import os
+from pathlib import Path
+import re
+import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# GutOmicsAtlas: no local paper RAG index (HeartOmicsAtlas paper_rag disabled here).
+def paper_search(*_args, **_kwargs):
+    return []
+
+
+def init_paper_search():
+    pass
+
+try:
+    import dotenv
+    _root = Path(__file__).resolve().parent
+    dotenv.load_dotenv(_root / ".env")
+except ImportError:
+    pass
 
 __all__ = ['process_ai_chat']
 
+# R httpuv plot hosts (scheme + host, no port) — same role as frontend VITE_R_BASE_HOST.
+PLOT_BACKEND_BASE = os.environ.get("PLOT_BACKEND_BASE", "http://128.84.40.118")
+# Python/nginx public origin for /data/st and /data/sm static figures (not R ports).
+GUT_PUBLIC_DATA_BASE = os.environ.get("GUT_PUBLIC_DATA_BASE", "http://128.84.40.118")
+GLKB_LLM_AGENT_URL = os.environ.get("GLKB_LLM_AGENT_URL", "https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent")
+
+# ---------------------------------------------------------------------------
+# Tool definitions for Claude native tool use
+# ---------------------------------------------------------------------------
+
+TOOLS = [
+    {
+        "name": "scRNA",
+        "description": (
+            "Show gene expression (coverage plot) in gut single-cell RNA-seq. "
+            "gene: symbol from the site list, case insensitive. "
+            "cell_type: epithelial (9025) or enteroendocrine / EEC (9028). "
+            "sample_type: fetal or adult."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "gene": {"type": "string", "description": "Gene symbol, case insensitive."},
+                "cell_type": {
+                    "type": "string",
+                    "enum": ["epithelial", "enteroendocrine"],
+                    "description": "Epithelial vs enteroendocrine (EEC).",
+                },
+                "sample_type": {
+                    "type": "string",
+                    "enum": ["fetal", "adult"],
+                    "description": "Fetal vs adult.",
+                },
+            },
+            "required": ["gene", "cell_type", "sample_type"],
+        },
+    },
+    {
+        "name": "snATAC",
+        "description": (
+            "Show snATAC-seq chromatin accessibility (IGV-style plot) for gut. "
+            "gene: symbol or supported locus, case insensitive. "
+            "cell_type: all (9026) or epithelial (9027)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "gene": {"type": "string", "description": "Gene or locus, case insensitive."},
+                "cell_type": {
+                    "type": "string",
+                    "enum": ["all", "epithelial"],
+                    "description": "All cell types vs epithelial.",
+                },
+            },
+            "required": ["gene", "cell_type"],
+        },
+    },
+    {
+        "name": "spatial_transcriptomics",
+        "description": (
+            "Spatial transcriptomics gene figure (Duodenum vs Colon). Gene must be in the site ST gene list."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "gene": {"type": "string", "description": "Gene symbol, case insensitive."},
+            },
+            "required": ["gene"],
+        },
+    },
+    {
+        "name": "spatial_metabolomics",
+        "description": (
+            "Spatial metabolomics slide image. "
+            "name must match the Spatial Metabolomics metabolite list exactly (case sensitive)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Exact metabolite name from the website."},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "static_images",
+        "description": (
+            "Default overview PNGs under imgs/ai/ on the server. name is case sensitive."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "enum": [
+                        "scRNA_Epithelial",
+                        "scRNA_Enteroendocrine",
+                        "snATAC_all",
+                        "snATAC_Epithelial",
+                        "st_umap_dot",
+                        "st_duodenum_colon",
+                    ],
+                    "description": "Overview asset keys matching ai.py static_images.",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "glkb_ai_assistant",
+        "description": (
+            "Ask a question to the GLKB (Genomic Literature Knowledge Base) AI assistant. "
+            "The GLKB assistant can only see the question string — it has no access to "
+            "chat history, so provide all necessary background and context in the question. "
+            "The result will be displayed to the user directly."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The full question to send to GLKB, including all needed context.",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Planner tool — used exclusively in Phase 1 to force a structured plan output
+# ---------------------------------------------------------------------------
+
+PLANNER_TOOL = [
+    {
+        "name": "create_plan",
+        "description": (
+            "Output a structured execution plan for the user's request. "
+            "List every tool call that needs to be made. All listed tool calls will be "
+            "executed in parallel, so do not list calls that depend on each other's output. "
+            "If no tools are needed (pure text/question), output an empty steps list."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "intro_text": {
+                    "type": "string",
+                    "description": (
+                        "A brief natural-language message to show the user while the tools run, "
+                        "e.g. 'I'll generate the scRNA and spatial plots for INS now.'. "
+                        "Leave empty string if no tools are needed."
+                    ),
+                },
+                "steps": {
+                    "type": "array",
+                    "description": "List of tool calls to execute (all run in parallel).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tool": {
+                                "type": "string",
+                                "enum": [
+                                    "scRNA",
+                                    "snATAC",
+                                    "spatial_transcriptomics",
+                                    "spatial_metabolomics",
+                                    "static_images",
+                                    "glkb_ai_assistant",
+                                ],
+                                "description": "Name of the tool to call.",
+                            },
+                            "input": {
+                                "type": "object",
+                                "description": "Input arguments for the tool, matching that tool's schema.",
+                            },
+                        },
+                        "required": ["tool", "input"],
+                    },
+                },
+            },
+            "required": ["steps"],
+        },
+    }
+]
+
+PLANNER_SYSTEM_PROMPT = """You are the planner for GutOmicsAtlas AI assistant.
+
+Your ONLY job is to call the `create_plan` tool with a list of tool calls needed to answer the user's request.
+
+## Available tools and their exact parameters
+
+### scRNA
+Gut single-cell RNA-seq gene expression plot (epithelial vs enteroendocrine; fetal vs adult).
+Parameters:
+  - gene: string — gene symbol from the site list, e.g. "LGR5", "MUC2", "CHGA"
+  - cell_type: EXACTLY "epithelial" OR "enteroendocrine"
+  - sample_type: EXACTLY "fetal" OR "adult"
+
+### snATAC
+Gut single-nucleus ATAC-seq accessibility plot.
+Parameters:
+  - gene: string — gene symbol or supported locus
+  - cell_type: EXACTLY "all" OR "epithelial"
+
+### spatial_transcriptomics
+Spatial transcriptomics figure (Duodenum vs Colon) for genes in the ST gene list.
+Parameters:
+  - gene: string — e.g. "EPCAM", "REG4"
+
+### spatial_metabolomics
+Spatial metabolomics slide image; name must match the website metabolite list exactly (case sensitive).
+Parameters:
+  - name: string — exact metabolite name, e.g. "Lactic Acid"
+
+### static_images
+Bundled overview PNGs. Use for "show overview", "what does the data look like", or dataset intro without a gene.
+Parameters:
+  - name: EXACTLY one of (case-sensitive):
+      "scRNA_Epithelial", "scRNA_Enteroendocrine", "snATAC_all", "snATAC_Epithelial",
+      "st_umap_dot", "st_duodenum_colon"
+
+### glkb_ai_assistant
+GLKB literature-backed Q&A (no chat history on GLKB side — put full context in `question`).
+Parameters:
+  - question: string
+
+## Rules
+
+**General:**
+- All steps run in parallel — only list independent tool calls.
+- Use EXACT enum strings for cell_type, sample_type, static name, etc.
+
+**Visualization tools:**
+- Call when the user asks to visualize, plot, show expression, accessibility, spatial maps, or metabolite slides.
+
+**glkb_ai_assistant:**
+- Call for broad biology, pathways, disease mechanisms, or literature context not answered by a plot alone.
+- Do NOT call for pure UI help ("what tabs exist?") unless they need literature.
+
+**Combining tools:**
+- Often combine glkb_ai_assistant with scRNA/snATAC/spatial tools when the user wants both explanation and a figure.
+
+**steps: [] (no tools):**
+- Greetings, thanks, pure navigation help, or when no figure/GLKB call is appropriate.
+
+**Note:** This deployment does not inject project-specific paper RAG excerpts; rely on GLKB, tools, and general reasoning.
+
+## Examples
+
+User: "Show LGR5 in epithelial scRNA, adult"
+Plan: scRNA(gene="LGR5", cell_type="epithelial", sample_type="adult")
+
+User: "ATAC for MUC2 in all cells"
+Plan: snATAC(gene="MUC2", cell_type="all")
+
+User: "Spatial TX for REG4"
+Plan: spatial_transcriptomics(gene="REG4")
+
+User: "Show lactic acid spatial metabolomics"
+Plan: spatial_metabolomics(name="Lactic Acid")
+
+User: "Overview of snATAC epithelial defaults"
+Plan: static_images(name="snATAC_Epithelial")
+
+User: "What does GLP1R do in the gut and show enteroendocrine fetal expression"
+Plan: glkb_ai_assistant(question="...") + scRNA(gene="GLP1R", cell_type="enteroendocrine", sample_type="fetal")
+
+User: "Hi"
+Plan: steps: []
+
+Do NOT include any explanation in your response — only call create_plan.
+"""
+
+# ---------------------------------------------------------------------------
+# System prompt (simplified — tool schemas handled by Claude native tool use)
+# ---------------------------------------------------------------------------
 
 PROMPT = """## 1. Introduction and Task
 
-You are the AI assistant of GutOmicsAtlas website. This website is for the display of some biology data, about human's gut. Its main functions include the showing gene expression images and spatial images. You need to chat with users, answer their questions, and generate images (by calling python functions) based on their requirements.
+You are the AI assistant of GutOmicsAtlas. The site presents human gut data: scRNA-seq (epithelial and enteroendocrine cells), snATAC-seq (all cells or epithelial), spatial transcriptomics (Duodenum vs Colon), and spatial metabolomics. You chat with users, answer questions, and interpret figures produced by the tools.
 
-GutOmicsAtlas is an Al-powered, user-friendly, open-access platform designed to analyzing single cell RNA-seq (scRNA-seq), Single-nucleus ATAC-seq (snATAC-seq), Spatial metabolomics, and Spatial Transcriptomics data. By integrating these datasets, GutOmicsAtlas provides a comprehensive framework for systematically analyzing cellular responses and molecular changes in human gut cells throughout development.
+GutOmicsAtlas integrates scRNA-seq, snATAC-seq, spatial transcriptomics, and spatial metabolomics for analyzing molecular patterns in gut tissue across development (fetal vs adult where applicable).
 
-You can also ask questions to GLKB AI assistant. The Genomic Literature Knowledge Base (GLKB) is a comprehensive and powerful resource that integrates over 263 million biomedical terms and more than 14.6 million biomedical relationships. This collection is curated from 33 million PubMed abstracts and nine well-established biomedical repositories, offering an unparalleled wealth of knowledge for researchers and practitioners in the field. The AI assistant of GLKB can search the database and answer user's question based on the database. If user asks some questions in the biology field but not related to this website, you can use GLKB to answer user's question.
+You can also use the GLKB AI assistant. The Genomic Literature Knowledge Base (GLKB) integrates biomedical terms and relationships from PubMed and curated repositories; use it when users need literature-grounded biology beyond what the plots alone show.
 
-## 2. Functions
+## 2. Tool Usage
 
-The website has the following 5 functions, as following:
+When the user asks to visualize or show data, the planner has already run the tools; you receive tool results (including images). Do NOT output raw JSON tool calls in your reply — synthesize natural language.
 
-1. def scRNA(gene: str, type: Literal["epithelial", "enteroendocrine"]) -> bytes:
-    '''
-    Show the gene expression (umap and expression level) in single cell RNA-seq. 
-    gene should be gene ID (or genetic loci), case insensitive. type can only be "epithelial" or "enteroendocrine", they are for Epithelial cells and Enteroendocrine cells.
-    '''
+- scRNA: gut scRNA coverage plots — requires cell_type (epithelial vs enteroendocrine) and sample_type (fetal vs adult).
+- snATAC: chromatin accessibility — cell_type all vs epithelial.
+- spatial_transcriptomics: ST figures for genes in the site list.
+- spatial_metabolomics: metabolite slide images (exact metabolite names).
+- static_images: pre-made overview PNGs for each major page.
+- glkb_ai_assistant: GLKB answers (you will see the returned text in tool results).
 
-2. def snATAC(gene: str, type: Literal["all", "epithelial"]) -> bytes:
-    '''
-    Show the gene expression (IGV plot) in Single-nucleus ATAC-seq. 
-    gene should be gene ID (or genetic loci), case insensitive. type can only be "all" or "epithelial", they are for All cell types and Epithelial cells.
-    '''
+After image tool results, briefly interpret what the figure shows (expression pattern, accessibility, spatial layout) in gut-relevant terms.
 
-3. def spatial_transcriptomics(gene: str) -> bytes:
-    '''
-    Show the gene's spatial comparison in Duodenum and  Colon.
-    gene should be gene ID, case insensitive.
-    '''
+## 3. How to Answer Biology Questions
 
-4. def spatial_metabolomics(name: str) -> bytes:
-    '''
-    Show chemicals' effect and signal on Duodenum and  Colon.
-    Can only select from following values, case insensitive.
-    ['Bisphosphoglyceric Acid', 'Lactic Acid', 'PS 38:4 (pos)', 'PE O-40:0', 'PC 34:2', 'Cys-Gly', 'PS 44:4', 'PS O-40:4', 'PC O-34:5', 'Pyruvic acid', 'PS O-40:7', 'PA 42:0', '(3−sulfo)Galbeta-Cer(d18:1/18:0(2OH))', 'IMP', 'PG 42:7', 'PA 44:3', 'PG 38:4', 'PS 44:5', 'Cer(d34:1) (pos)', 'PI O-30:1', 'PC 34:0', 'PI O-36:2', 'PI O-30:2', 'PI O-28:1', 'PE 34:0 (pos2)', 'Cholesterol Sulfate', 'PC 36:1', 'Dopa', 'Hemin', 'Arginine', 'PT 36:1', 'Glucose (pos)', 'ADP', 'dIMP', 'Heme', 'PE 38:1 (pos)', 'Alanine', 'PE O-38:6', 'PG 44:12', 'PE O-38:8', 'PE 40:7', 'PC 38:6', 'PC 40:6', 'LPA 18:2', 'UDP N-acetylglucosamine', 'PC 38:4', '(3−sulfo)GalbetaCer(d18:1/16:0(2OH))', 'PC 40:8', 'PC 36:2', 'PE 26:1', 'Pantothenic Acid (Vitamin B5)', 'LPI 16:0', 'PC 38:3', 'PC 38:7', 'PC 42:9', 'PA 42:8', 'GMP', 'UMP', 'LPI 18:1', 'PE O-36:4', 'AMP', 'PC 36:5', 'PA 36:3', 'LPE O-16:0', 'PI 32:1', 'PI 38:4', 'PI O-36:4', 'PI 36:4', 'PI 36:3', 'PA 36:4', 'gamma Glutamylglutamic Acid', "5'-CMP", 'PG 38:3', 'Eicosapentaenoic Acid (20:5 N-3)', 'PI 34:1', 'Lactobionic Acid', 'PA 34:2 (pos2)', 'PE 36:3 (pos)', 'PC O-36:5', 'PI 36:1', 'dTDP', 'PS 36:1', 'PE 38:4 (pos)', 'Acetylcarnitine (pos)', 'PC 22:1', 'dADP', 'PA 40:6 (pos)', 'PI 36:2', 'PE 38:4 (neg)', 'LPC O-18:2', 'PC O-40:8', 'PE 36:1', 'PE O-40:6', 'PE 36:4', 'LPE 20:5', 'PG 34:1', 'UDP', 'PA 42:10 (pos)', 'PC 34:1', 'PC 20:1', 'PI 36:5', 'PS 34:1', 'LPE O-18:0', 'PC 36:6', 'PC 30:0', 'PC O-34:1', 'PA 42:1 (neg)', 'Linoleic Acid', 'PE 36:2', 'PA 38:5', 'LPS O-16:1', 'PE 38:5', 'Fructose Bisphosphate', 'Carnitine', 'DG O-36:4', 'PE 32.1', 'Acetyl phosphate', 'PA 34:2 (neg)', 'PC 32:4', 'PE O-38:4', 'Adenine', 'LPE 20:4', 'PS 40:4', 'PS 40:6', 'LPA O-20:4', 'PC 42:10', 'PE 34:1', 'PA 38:1', 'PI O-38:4', 'PS 40:1', 'SM(d35:1) (pos)', 'PS 38:3', 'PC 42:8', 'GSH', 'PS 42:1', 'PE 38:6', 'PS 38:4 (neg)', 'PA 40:1', 'LPE 18:3', 'CPA 18:0', 'PE 36:3 (neg)', 'CPA 18:1 (neg)', 'LPE 18:2', 'PI 38:6', 'PC 32:1', 'Guanine', 'PA 42:2 (pos)', 'PE 34:2', 'PC 32:5', 'SM(d42:2)', 'PE O-40:4', 'PG 36:2', 'SM(d34:1)', 'PA 38:6', 'PA 42:3', 'CPA 16:0', 'Arachidonic Acid', 'LPE 22:6', 'Docosahexaenoic Acid', 'Eicosatrienoic Acid (20:3 N-3)', 'LPA 18:0', 'Threonine', 'Asparagine', 'PA 38:4', 'LPE 18:1', 'LPE 20:0', 'PE 34:0 (pos1)', 'LPI 18:0', 'PA 40:4', 'LPE 18:0', 'Dityrosine', 'PA 36:2', 'PC O-38:7', 'Ribose 5-Phosphate', 'LPA 18:1', 'PA 38:2', 'LPE 22:4', 'Glucose (neg)', 'LPA 22:6', 'PC O-32:0', 'PE 38:1 (neg)', 'Glutarylglycine N-Acetylglutamic Acid', 'PA 38:3', 'PA 34:1', 'LPE 16:0', 'PS 36:2', 'PE 38:2', 'LPA 20:4 (neg)', 'Docosapentaenoic Acid', '4 Aminobutyric acid (GABA)', 'Phosphohexose/Phosphoinositol', 'PA 40:5', 'Tyr-Tyr', 'Cer(d34:1) (neg)', 'PE 40:4', 'Ascorbic Acid', 'LPA 16:0', 'N-Acetylneuraminic Acid (Neu5Ac)', 'LPC 16:0', 'Citric Acid', 'LPE 22:5', 'SM(d40:1)', 'PA 40:6 (neg)', 'Aconitic Acid', 'Oxoadipic Acid', 'Sedoheptulose', 'SM(d36:2)', 'Stearic Acid', 'Adrenic Acid', 'Oleic Acid', 'SM(d33:1)', 'LPE 16:1', 'PE 40:5', 'Zinc Chloride', 'PA 40:2', 'N-gamma Glutamylglutamine', 'PC 32:0', 'DG O-32:2', 'O-Phosphoethanolamine', 'Taurine', 'LPA 20:4 (pos)', 'N-Acetylaspartylglutamate (NAAG)', '4-Phosphopantothenate', '5-Oxoproline Pyroglutamate', 'PA 34:2 (pos1)', 'Copper (I) Chloride', 'Aspartic Acid', 'PC O-38:4', 'PE 34:0 (neg)', 'Fumaric Acid', 'PE 32:0', 'CPA 18.1 (pos)', 'N-Acetylaspartic Acid', 'LPA 22:4', 'PS 26:0', 'Gluconolactone(GDL)', 'Farnesylpyrophosphate', 'Glutamic Acid', 'Asn-Met', 'PC 32:3', 'Glycerylphosphorylethanolamine', 'PA O-38:5', 'Lactose', 'Glutamylhydroxyproline', 'LPE 20:1', 'Methyluridine Ribothymidine ', 'PA 32:0', '3-Phosphoglyceroinositol', 'LPE 20:2', 'PA 34:0', 'Palmitic Acid', 'Histidine', 'Glutamine', 'SM(d36:1)', 'Pyrophosphoric Acid', 'Malic Acid', '6-Phosphogluconic Acid', 'PA 42:2 (neg)', 'Sedoheptulose 7-Phosphate', 'SM(d35:1) (neg)', 'Uric Acid', 'PE 38:0', 'Hydroxybutyrylcarnitine', 'Uridine', 'Carnosine', 'Palmitoylglycine', 'Magnesium Dichloride', 'Sulfuric Acid', 'SM(d32:1)', 'Calcitroate', 'Xanthine', 'Acetolactate/Glutaric acid', 'Phosphoric Acid', 'Iron (II) Chloride', 'Inosine', 'Hydroxypropionylcarnitine', 'Iron (III) Chloride', 'Glycerophosphocholine', 'Succinic Acid', 'Threonic Acid', 'Hexose Phosphate', 'Propionylcarnitine', 'Potassium Chloride', '19-Nonanedioate', 'Sodium Chloride', '6-Phosphonogluconolactone d-6PGL Dehydrodeoxyphosphogluconate', 'Acetylcarnitine (neg)', 'Phosphoglycerate', 'Calcium Chloride', 'PC O-34:3', 'Guanosine', 'LPI O-20:1', 'Erythrose Phosphate', 'PS O-36:4', 'Glucosamine 6-phosphate']
-    '''
+1. Combine GLKB or general knowledge with what GutOmicsAtlas visualizations show when both exist.
+2. Use phrasing like "In this atlas...", "On the scRNA/snATAC/spatial views...", tying claims to the tools the user asked for.
+3. If fetal vs adult or epithelial vs EEC was not specified and the question requires it, ask the user to choose.
 
-5. static_images(name: Literal["scRNA_Epithelial", "scRNA_Enteroendocrine", "snATAC_all", "snATAC_Epithelial", "st_umap_dot", "st_duodenum_colon"]) -> bytes:
-    '''
-    To show some static images to the user. Currently has following:
-    1. scRNA_Epithelial: two images on the scRNA page (when Epithelial cells is selected), left is an UMAP plot showing gut epithelial cell clusters by type with distinct colors, right is a dot plot displaying gene expression levels across five gut epithelial cell types.
-    2. scRNA_Enteroendocrine: two images on the scRNA page (when Enteroendocrine cells is selected), similar as above.
-    3. snATAC_all: two images on the scATAC page (when All cell types is selected), left is an UMAP plot showing clustered cell types, color-coded by identity (endothelial, epithelial, immune, etc.), right is a dot plot displaying gene expression levels and percentages across different cell types.
-    4. snATAC_Epithelial: two images on the scATAC page (when Epithelial cells is selected), similar as above.
-    5. st_umap_dot: two images on the spatial transcriptomics page, containing a UMAP and a dotplot (similar as above).
-    6. st_duodenum_colon: two images  on the spatial transcriptomics page, they are spatial transcriptomics plots of duodenum (left) and colon (right) showing color-coded cell types: enterocytes, stem cells, goblet cells, EECs, and TA cells.
+## 4. Behavioral Guidelines
 
-    Note: the above I say 2 images, actually they are put together in one png file.
-    name is case sensitive.
-    '''
+- Remember prior turns; speak directly to the user ("you" / "I").
+- Natural language only in the final reply (no JSON arrays).
+- If a question is ambiguous (e.g. which cell type or stage), ask a short clarifying question.
+- You may answer unrelated general questions briefly, but prioritize GutOmicsAtlas context when relevant."""
 
-6. glkb_ai_assistant(question: str) -> str:
-    '''
-    Ask questions to GLKB AI assistant. The GLKB assistant can only see the question string, it cannot see any chat history between user and you, so you need to provide all the backgroung and necessary information to it. The result will be displayed to user directly, will not be provided to you.
-    '''
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(BASE_DIR, "openai_logs.txt")
 
-## 3. Output Format
-
-### 3.1 General Format
-
-You need to choose which function(s) to call, and the parameters of it, based on the user's input. And also answer user's questions.
-
-The final result should be in json, a list of messages.
-
-A message is one of the following kind:
-
-1. text: the text content shown directly to user. In json, just use the string in json.
-2. function: call our python function to generate something, and show it to user. In json, use a dict with 2 keys (name and parameters)
-
-### 3.2 the format of function calling
-
-Each function calling is a dict, with 2 keys: name and parameters.
-
-1. name: the name of the python function to call. Note that name is case sensitive.
-2. parameters: a list of paramenters in python function, in the order of python functions' parameter order (even just 1 parameter, it should also be a list). Optional parameters should also be provided.
-
-### 3.3 Other notes
-
-1. It is OK to not call any functions in your response, if user doesn't request or can't fulfilled by our functions.
-2. In one response, can only contain at most 2 text parts. Text can only be in the beginning or at end, cannot be in the middle.
-3. Must contain text part, even if user just requires to call functions and there is no problems, you should also tell what you have done in text.
-4. This is a chatting mode, so you need to rememebr user's previous messages, and answer new questions based on the chatting history smartly.
-5. Interact with the user directly, (i.e. use more you and I)
-
-## 4. User Input and Error Handling
-
-In general, you should do best effort to match user's input (i.e. if the user's input is not precise or match our functionality that much, as long as it is clear that which one to call, you should do so). You are not allowed to interpret or execute user's input.
-
-But if user asks a vague function (that you are not sure which function to call), tell user and asks user which option to choose. PLEASE ask user to do choice, DO NOT select by yourself. For example, if user only asks "the expression of XXX", it's unclear, you should ask user to choose.
-
-Only do what user asks, DO NOT call extra functions user does not request.
-
-Only call functions or generate images when user asks to, do not do this if user only asks "What is XXX" or "Can you tell me XXX" etc.
-
-Answer all the questions in the context of GutOmicsAtlas. But you are still allowed to answer completely unrelated questions.
-
-
-## 5. Output Requirements
-
-Please output in json directly, without any other explantion. The outest later must be list. NO any additional json layer, NO any additional key or item."""
-
-
-LOG_PATH = '../openai_logs.txt'
-
-assert (sha256(PROMPT.encode('utf-8')).hexdigest() == '0aad2d1e9bb3f063ed3ad8404bce2b274bb05441a43e7d5cc4d2b2625fd398bd')
-# print(sha256(PROMPT.encode('utf-8')).hexdigest())
-# raise
-
-from config import api_key, anthropic_model
-
-client = anthropic.Anthropic(api_key=api_key)
+client = anthropic.Anthropic(api_key=API_KEY)
+init_paper_search()
 
 rate_limit_records = []
 
+
 def within_rate_limit():
-    t = time()
+    t = time.time()
     for i in range(len(rate_limit_records)-1, -1, -1):
         if (t - rate_limit_records[i] > 3600):
             rate_limit_records.pop(i)
@@ -144,174 +371,672 @@ def within_rate_limit():
     return True
 
 
-def check_json_format(text: str) -> None:
-    data = json.loads(text, strict=False)
-    assert (type(data) == list and len(data) > 0), "Outest layer must be list."
-    text_cnt = 0
-    for msg in data:
-        assert (type(msg) == str or (type(msg) == dict and 'name' in msg and 'parameters' in msg)), "The item of the outest list should be either a string or a dict with keys \"name\" and \"parameters\"."
-        if (type(msg) == dict):
-            assert (type(msg['name']) == str and type(msg['parameters']) == list), '"name" should be a string, and "parameters" should be a list.'
-        text_cnt += int(type(msg) == str)
-    assert (text_cnt <= 2 and text_cnt >= 1), "Your output should contain at most 2 text parts, and at least 1 text part."
+# ---------------------------------------------------------------------------
+# History normalisation  (flat frontend format <-> Anthropic format)
+# ---------------------------------------------------------------------------
 
+def _flat_to_anthropic(flat_history: list) -> list:
+    """Convert the frontend's [{role, content: str}] into Anthropic-compatible messages.
 
-def check_format(resp: str) -> None:
-    '''
-    returns: (success, error_msg)
-    '''
-    check_json_format(resp)
-    resp = json.loads(resp, strict=False)
-    for msg in resp:
-        if (type(msg) == str):
+    Strips any non-user/assistant roles and ensures content is always a string.
+    """
+    msgs: list = []
+    for m in flat_history:
+        role = m.get("role")
+        content = m.get("content", "")
+        if role not in ("user", "assistant"):
             continue
-        func_name = msg['name']
-        assert (func_name in ['scRNA', 'snATAC', 'spatial_transcriptomics', 'spatial_metabolomics', 'static_images', 'glkb_ai_assistant']), f"Function {func_name} is not valid."
-        parameters = msg['parameters']
-        if (func_name == 'scRNA'):
-            assert (len(parameters) == 2), "scRNA accepts exactly 2 parameters."
-            assert (type(parameters[0]) == str and format_gene(parameters[0]) in rna_atac_genes_formatted_to_origin), f'Gene {parameters[0]} is not available in scRNA.'
-            assert (type(parameters[1]) == str and parameters[1] in ['epithelial', 'enteroendocrine'])
-        if (func_name == 'snATAC'):
-            assert (len(parameters) == 2), "snATAC accepts exactly 2 parameters."
-            assert (type(parameters[0]) == str and format_gene(parameters[0]) in rna_atac_genes_formatted_to_origin), f'Gene {parameters[0]} is not available in snATAC.'
-            assert (type(parameters[1]) == str and parameters[1] in ['all', 'epithelial'])
-        if (func_name == 'spatial_transcriptomics'):
-            assert (len(parameters) == 1), "spacial_transcriptomics accepts exactly 1 parameter."
-            assert (type(parameters[0]) == str and format_gene(parameters[0]) in st_genes_formatted_to_origin), f'Gene {parameters[0]} is not available in spatial transcriptomics.'
-        if (func_name == 'spatial_metabolomics'):
-            assert (len(parameters) == 1), "spatial_metabolomics accepts exactly 1 parameter."
-            assert (type(parameters[0]) == str and parameters[0] in spatial_meta), f'Chemical {parameters[0]} is not available in spatial metabolomics.'
-        if (func_name == 'static_images'):
-            assert (len(parameters) == 1)
-            assert (type(parameters[0]) == str and parameters[0] in ['scRNA_Epithelial', 'scRNA_Enteroendocrine', 'snATAC_all', 'snATAC_Epitheliel', 'st_umap_dot', 'st_duodenum_colon']), f"Name {parameters[0]} not found in static images."
-        if (func_name == 'glkb_ai_assistant'):
-            assert (len(parameters) == 1), "glkb_ai_assistant accepts exactly 1 parameter."
-            assert (type(parameters[0]) == str), "The parameter of glkb_ai_assistant should be a string."
-        
+        if not isinstance(content, str):
+            content = str(content)
+        if not content.strip():
+            continue
+        msgs.append({"role": role, "content": content})
 
-
-def get_gpt_resp(history: list) -> Tuple[bool, str, str]:
-    '''
-    returns: (success, error_msg, response)
-    
-    will modify the history
-    '''
-    # history = deepcopy(history)
-    trial = 3
-    while (trial > 0):
-        trial -= 1
-        try:
-            response = client.messages.create(
-                model=anthropic_model,
-                temperature=0.2,
-                messages=history,
-                max_tokens=3072,
-                system=PROMPT,
-            )
-            result = response.content[0].text
-            print(result)
-            log_queue.put(json.dumps({'history': history, 'response': result}, ensure_ascii=False))
-        except Exception:
-            tb = traceback.format_exc()
-            print(tb)
-            try:
-                log_queue.put(json.dumps({'anthropic_request_failed': tb}, ensure_ascii=False))
-            except Exception:
-                pass
-            # will not retry if Claude API fails (empty history, auth, network, model, etc.)
-            return (False, 'Failed to get the response from GPT. Please copy your input, refresh the page and try again.', '')
-        try:
-            check_format(result)
-            success = True
-        except:
-            err_msg = traceback.format_exc()
-            print(err_msg)
-            err_msg += '\n\nEncountered an error, please try to fix this.\nIf this is a format issue, please retry and make sure your response satisfies the format requirement.\nIf the issue is gene not found, you can either try again or tell user the problem.'
-            success = False
-        if (success):
-            history.append({'role': 'assistant', 'content': result})
-            print(f'======== GPT success after {3-trial} trials.')
-            return (True, '', result)
-        history.append({'role': 'assistant', 'content': result})
-        history.append({'role': 'user', 'content': err_msg})
-    print('======== GPT fails after 3 trials.')
-    return (False, 'GPT returns illegal format after max retries. Please copy your input, refresh the page and try again.', '')
-
-
-def glkb_chat(question: str) -> tuple[bool, str]:
-    try:
-        client = openai.OpenAI(base_url='http://104.187.142.167:40682/v1', api_key='123456')
-        response = client.chat.completions.create(
-            model='my-model',
-            messages=[
-                {'role': 'user', 'content': question}
-            ]
-        )
-        result = response.choices[0].message.content
-        return (True, result)
-    except:
-        err_msg = traceback.format_exc()
-        return (False, err_msg)
-
-
-def generate_messgae(resp: str) -> str:
-    messages = []
-    resp = json.loads(resp, strict=False)
-    for msg in resp:
-        if (type(msg) == str):
-            messages.append({'type': 'text', 'content': msg})
+    # Anthropic requires messages to alternate user/assistant.
+    # Merge consecutive same-role messages.
+    merged: list = []
+    for m in msgs:
+        if merged and merged[-1]["role"] == m["role"]:
+            merged[-1]["content"] += "\n" + m["content"]
         else:
-            file_name = secrets.token_hex(64) + '.pdf'
-            R_file_name = '/root/docker_data/' + file_name
-            py_file_name = '../docker_data/' + file_name
-            if (msg['name'] == 'scRNA' and msg['parameters'][1] == 'epithelial'):
-                id = 25
-                gene = rna_atac_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-                png_bytes = pdf_to_png_bytes(py_file_name)
-                messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
-            elif (msg['name'] == 'scRNA' and msg['parameters'][1] == 'enteroendocrine'):
-                id = 24
-                gene = rna_atac_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-                png_bytes = pdf_to_png_bytes(py_file_name)
-                messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
-            elif (msg['name'] == 'snATAC' and msg['parameters'][1] == 'all'):
-                id = 26
-                gene = rna_atac_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-                png_bytes = pdf_to_png_bytes(py_file_name)
-                messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
-            elif (msg['name'] == 'snATAC' and msg['parameters'][1] == 'epithelial'):
-                id = 27
-                gene = rna_atac_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-                png_bytes = pdf_to_png_bytes(py_file_name)
-                messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
-            elif (msg['name'] == 'spatial_transcriptomics'):
-                gene = st_genes_formatted_to_origin[format_gene(msg['parameters'][0])]
-                messages.append({'type': 'image', 'content': f'http://128.84.40.118/data/st/{gene}.png'})
-            elif (msg['name'] == 'spatial_metabolomics'):
-                index = spatial_meta.index(msg['parameters'][0]) + 1
-                messages.append({'type': 'image', 'content': f'http://128.84.40.118/data/sm/Slide{index}.png'})
-            elif (msg['name'] == 'static_images'):
-                with open(f'./imgs/ai/{msg["parameters"][0]}.png', 'rb') as f:
-                    png_bytes = f.read()
-                messages.append({'type': 'image', 'content': 'data:image/png;base64,' + binToBase64(png_bytes)})
-            elif (msg['name'] == 'glkb_ai_assistant'):
-                question = msg['parameters'][0]
-                success, answer = glkb_chat(question)
-                if (success == False):
-                    answer = 'Failed to get the answer from GLKB AI assistant.'
-                messages.append({'type': 'text', 'content': f'Ask GLKB AI assistant: {question}\n\nAnswer: {answer}'})
-    return messages
-            
+            merged.append(dict(m))
 
-def process_ai_chat(request, path:str):
+    # Must start with a user message
+    while merged and merged[0]["role"] != "user":
+        merged.pop(0)
+
+    return merged
+
+
+def _flatten_assistant_text(content_blocks) -> str:
+    """Extract plain text from an Anthropic assistant response content list."""
+    parts = []
+    for block in content_blocks:
+        if hasattr(block, "text"):
+            parts.append(block.text)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# RAG helpers (optional; paper_search is stubbed for GutOmicsAtlas)
+# ---------------------------------------------------------------------------
+
+def _latest_user_text(history: list) -> str:
+    for msg in reversed(history):
+        if isinstance(msg, dict) and msg.get("role") == "user":
+            c = msg.get("content", "")
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+            if isinstance(c, list):
+                for block in c:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        t = block.get("text", "").strip()
+                        if t:
+                            return t
+    return ""
+
+def _excerpt_around_term(text: str, term: str, window: int = 350) -> str:
+    if not term:
+        return text[:900] + ("..." if len(text) > 900 else "")
+
+    m = re.search(re.escape(term), text, flags=re.IGNORECASE)
+    if not m:
+        return text[:900] + ("..." if len(text) > 900 else "")
+
+    start = max(0, m.start() - window)
+    end = min(len(text), m.end() + window)
+    excerpt = text[start:end].strip()
+
+    prefix = "... " if start > 0 else ""
+    suffix = " ..." if end < len(text) else ""
+    return prefix + excerpt + suffix
+
+
+def _format_paper_evidence(hits: list, query: str) -> str:
+    if not hits:
+        return "No relevant paper excerpts found."
+
+    term = ""
+    q = (query or "").strip()
+    if 1 <= len(q) <= 40 and " " not in q:
+        term = q
+    else:
+        m = re.search(r"\bis\s+([A-Za-z0-9_-]{2,40})\s+mentioned\b", q, flags=re.IGNORECASE)
+        if m:
+            term = m.group(1)
+
+    lines = []
+    for i, h in enumerate(hits, 1):
+        sec = h.get("section_path", "UNKNOWN")
+        cid = h.get("chunk_id", "UNKNOWN")
+        txt = (h.get("text", "") or "").strip()
+        txt = _excerpt_around_term(txt, term, window=350)
+        lines.append(f"[{i}] section={sec} chunk_id={cid}\n{txt}")
+    return "\n\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Tool execution
+# ---------------------------------------------------------------------------
+
+# Timeout for fetching plot images from the R backend (seconds).
+# R plot generation can be slow on first call; 120s gives it room to breathe.
+_PLOT_FETCH_TIMEOUT = 120
+
+
+def _fetch_png_bytes(url: str) -> Union[bytes, None]:
+    """Fetch PNG bytes from the R plot server.
+
+    Returns bytes on success, None on any error (timeout, HTTP error, etc.).
+    """
+    try:
+        resp = requests.get(url, timeout=_PLOT_FETCH_TIMEOUT, verify=False)
+        if resp.status_code == 200 and resp.content:
+            return resp.content
+        print(f"_fetch_png_bytes: HTTP {resp.status_code} from {url}")
+        return None
+    except Exception as e:
+        print(f"_fetch_png_bytes: error fetching {url}: {e}")
+        return None
+
+
+def _image_tool_result(description: str, png_bytes: Union[bytes, None], url: str) -> Tuple[list, dict]:
+    """Build a multimodal tool_result content list and a frontend display_msg.
+
+    Claude receives the actual image as a base64 block (so it can interpret the figure).
+    The frontend always gets the original URL as the image src — this keeps the JSON
+    response small and avoids the React imgStatus key-collision bug that occurs when
+    multi-megabyte base64 strings are used as state object keys.
+
+    Returns:
+        (tool_result_content, display_msg)
+        - tool_result_content: list of content blocks for the Anthropic tool_result
+        - display_msg: dict for the frontend {"type": "image", "content": url}
+    """
+    if png_bytes:
+        b64 = binToBase64(png_bytes)
+        tool_result_content = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": b64,
+                },
+            },
+            {
+                "type": "text",
+                "text": description,
+            },
+        ]
+    else:
+        tool_result_content = [{"type": "text", "text": f"{description} (image could not be fetched)"}]
+
+    # Always use the original URL for the frontend — keeps JSON small and imgStatus keys short
+    display_msg = {"type": "image", "content": url}
+
+    return tool_result_content, display_msg
+
+
+def execute_tool(name: str, tool_input: dict) -> Tuple[Union[str, list], Union[dict, None]]:
+    """Execute a single tool call.
+
+    Returns:
+        (tool_result_content, display_msg_or_None)
+        - tool_result_content: str or list of content blocks fed back to Claude as tool_result.
+          For image-producing tools this is a multimodal list [image_block, text_block] so
+          Claude can see and reason about the generated figure.
+        - display_msg: optional dict for the frontend ({"type": "image"/"text", "content": ...})
+    """
+    base = PLOT_BACKEND_BASE.rstrip("/")
+    data_base = GUT_PUBLIC_DATA_BASE.rstrip("/")
+
+    if name == "scRNA":
+        raw_gene = tool_input["gene"]
+        cell_type = tool_input["cell_type"]
+        sample_type = tool_input["sample_type"]
+        fg = format_gene(raw_gene)
+        if fg not in rna_atac_genes_formatted_to_origin:
+            msg = f"Gene '{raw_gene}' is not in the scRNA/snATAC gene list for this site."
+            return (msg, {"type": "text", "content": msg})
+        gene = rna_atac_genes_formatted_to_origin[fg]
+        gq = urllib.parse.quote(gene, safe="")
+        stq = urllib.parse.quote(sample_type, safe="")
+        port = 9025 if cell_type == "epithelial" else 9028
+        url = f"{base}:{port}/genes/{gq}?sample_type={stq}"
+        desc = f"scRNA plot gene={gene}, cell_type={cell_type}, sample_type={sample_type}"
+        png_bytes = _fetch_png_bytes(url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        return tool_result_content, display_msg
+
+    if name == "snATAC":
+        raw_gene = tool_input["gene"]
+        cell_type = tool_input["cell_type"]
+        fg = format_gene(raw_gene)
+        if fg not in rna_atac_genes_formatted_to_origin:
+            msg = f"Gene/locus '{raw_gene}' is not in the site gene list for snATAC."
+            return (msg, {"type": "text", "content": msg})
+        gene = rna_atac_genes_formatted_to_origin[fg]
+        gq = urllib.parse.quote(gene, safe="")
+        port = 9026 if cell_type == "all" else 9027
+        url = f"{base}:{port}/genes/{gq}"
+        desc = f"snATAC plot gene={gene}, cell_type={cell_type}"
+        png_bytes = _fetch_png_bytes(url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        return tool_result_content, display_msg
+
+    if name == "spatial_transcriptomics":
+        raw_gene = tool_input["gene"]
+        fg = format_gene(raw_gene)
+        if fg not in st_genes_formatted_to_origin:
+            msg = f"Gene '{raw_gene}' is not in the spatial transcriptomics gene list."
+            return (msg, {"type": "text", "content": msg})
+        gene = st_genes_formatted_to_origin[fg]
+        gq = urllib.parse.quote(gene, safe="")
+        url = f"{data_base}/data/st/{gq}.png"
+        desc = f"Spatial transcriptomics plot gene={gene}"
+        png_bytes = _fetch_png_bytes(url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        return tool_result_content, display_msg
+
+    if name == "spatial_metabolomics":
+        metabolite = tool_input["name"]
+        try:
+            index = spatial_meta.index(metabolite) + 1
+        except ValueError:
+            msg = f"Metabolite '{metabolite}' not found in the spatial metabolomics list (exact name required)."
+            return (msg, {"type": "text", "content": msg})
+        url = f"{data_base}/data/sm/Slide{index}.png"
+        desc = f"Spatial metabolomics metabolite={metabolite} (slide {index})"
+        png_bytes = _fetch_png_bytes(url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        return tool_result_content, display_msg
+
+    if name == "static_images":
+        image_name = tool_input["name"]
+        rel = f"{image_name}.png"
+        static_path = os.path.join(BASE_DIR, "imgs", "ai", rel)
+        try:
+            with open(static_path, "rb") as f:
+                png_bytes = f.read()
+            b64 = binToBase64(png_bytes)
+            tool_result_content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": b64,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": f"Default overview image '{image_name}' loaded from imgs/ai/.",
+                },
+            ]
+            display_msg = {"type": "image", "content": "data:image/png;base64," + b64}
+            return tool_result_content, display_msg
+        except OSError:
+            return (
+                f"Static image '{image_name}' not found at imgs/ai/{rel}.",
+                {"type": "text", "content": f"Static image {image_name} not found on server."},
+            )
+
+    if name == "glkb_ai_assistant":
+        question = tool_input["question"]
+        success, answer = glkb_chat(question)
+        if not success:
+            return (
+                f"GLKB call failed. Error: {answer}",
+                {"type": "text", "content": f"GLKB call failed.\n\nError:\n{answer}"},
+            )
+        return (
+            f"GLKB answer: {answer}",
+            {"type": "text", "content": f"Ask GLKB AI assistant: {question}\n\nAnswer:\n\n{answer}"},
+        )
+
+    return (f"Unknown tool '{name}'.", None)
+
+
+# ---------------------------------------------------------------------------
+# Parallel executor — runs all planned tool calls concurrently
+# ---------------------------------------------------------------------------
+
+def execute_plan_parallel(steps: List[dict]) -> List[Tuple[Union[str, list], Union[dict, None]]]:
+    """Execute a list of planned tool calls concurrently.
+
+    Each step is {"tool": name, "input": {...}}.
+    Returns results in the same order as the input steps list.
+    """
+    if not steps:
+        return []
+
+    results: List[Union[Tuple, None]] = [None] * len(steps)
+
+    with ThreadPoolExecutor(max_workers=min(8, len(steps))) as pool:
+        futures = {
+            pool.submit(execute_tool, s["tool"], s["input"]): i
+            for i, s in enumerate(steps)
+        }
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                tool_name = steps[idx]["tool"]
+                print(f"execute_plan_parallel: tool '{tool_name}' raised: {e}")
+                results[idx] = (f"Tool '{tool_name}' failed: {e}", None)
+
+    return results  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Core Claude call: Planner → Parallel Executor → Synthesizer
+# ---------------------------------------------------------------------------
+
+def get_gpt_resp(history: list) -> Tuple[bool, str, list]:
+    """Three-phase pipeline: Planner → Parallel Executor → Synthesizer.
+
+    Phase 1 (Planner): A dedicated Claude call with tool_choice forced to
+        create_plan. Claude outputs a structured list of tool calls.
+    Phase 2 (Executor): All planned tool calls run concurrently via
+        ThreadPoolExecutor. Images are fetched in parallel from R servers.
+    Phase 3 (Synthesizer): Claude receives all tool results (including base64
+        images) and generates the final natural-language response.
+
+    Fallback: if the planner outputs steps=[], Phase 2 is skipped and Phase 3
+        is a direct text-only call (no tools), e.g. for pure biology questions.
+
+    Returns: (success, error_msg, frontend_messages)
+    """
+    try:
+        user_q = _latest_user_text(history)
+        MAX_QUERY_CHARS = 1200
+        user_q = user_q[:MAX_QUERY_CHARS]
+
+        # Paper RAG disabled for GutOmicsAtlas (paper_search is a stub returning []).
+        paper_section = (
+            "## 4. Context note (no project paper RAG)\n"
+            "This deployment does not attach indexed paper excerpts. "
+            "Use GLKB tool results when present, visualization tool results, and general reasoning.\n"
+        )
+
+        anthropic_msgs = _flat_to_anthropic(history)
+        collected_messages: List[dict] = []
+
+        # -------------------------------------------------------------------
+        # Phase 1 — Planner
+        # -------------------------------------------------------------------
+        planner_system = PLANNER_SYSTEM_PROMPT + "\n\n" + paper_section
+
+        planner_resp = client.messages.create(
+            model=anthropic_model,
+            temperature=0,
+            messages=anthropic_msgs,
+            max_tokens=1024,
+            system=planner_system,
+            tools=PLANNER_TOOL,
+            tool_choice={"type": "tool", "name": "create_plan"},
+        )
+
+        # Extract the create_plan call — it is guaranteed by tool_choice
+        plan_input: dict = {}
+        for block in planner_resp.content:
+            if hasattr(block, "name") and block.name == "create_plan":
+                plan_input = block.input
+                break
+
+        steps: List[dict] = plan_input.get("steps", [])
+        intro_text: str = plan_input.get("intro_text", "").strip()
+
+        print(f"======== Planner: {len(steps)} step(s): {[s['tool'] for s in steps]}")
+        log_queue.put(json.dumps({"planner": plan_input}, ensure_ascii=False))
+
+        if intro_text:
+            collected_messages.append({"type": "text", "content": intro_text})
+
+        # -------------------------------------------------------------------
+        # Phase 2 — Parallel Executor (skipped when steps is empty)
+        # -------------------------------------------------------------------
+        # tool_results_for_claude: list of tool_result blocks to send to synthesizer
+        # Fake tool_use_ids are generated since we bypassed the normal tool_use flow.
+        tool_results_for_claude: List[dict] = []
+
+        if steps:
+            for s in steps:
+                print(f"  -> planned: {s['tool']}({s['input']})")
+
+            exec_results = execute_plan_parallel(steps)
+
+            for i, (result_content, display_msg) in enumerate(exec_results):
+                if display_msg:
+                    collected_messages.append(display_msg)
+                # We need a stable fake tool_use_id for each step so we can
+                # build a valid tool_result message for the synthesizer.
+                fake_id = f"plan_step_{i}"
+                tool_results_for_claude.append({
+                    "type": "tool_result",
+                    "tool_use_id": fake_id,
+                    "content": result_content,
+                })
+
+        # -------------------------------------------------------------------
+        # Phase 3 — Synthesizer
+        # -------------------------------------------------------------------
+        synthesizer_system = PROMPT + "\n\n" + paper_section
+
+        # Build the synthesizer message history.
+        # We inject a fake assistant turn that "called" the planned tools,
+        # followed by a user turn with all the tool results, so Claude
+        # understands what was executed and can interpret the results.
+        synth_msgs = list(anthropic_msgs)  # copy
+
+        if steps and tool_results_for_claude:
+            # Fake assistant turn: one tool_use block per step
+            fake_tool_uses = [
+                {
+                    "type": "tool_use",
+                    "id": f"plan_step_{i}",
+                    "name": s["tool"],
+                    "input": s["input"],
+                }
+                for i, s in enumerate(steps)
+            ]
+            synth_msgs.append({"role": "assistant", "content": fake_tool_uses})
+            synth_msgs.append({"role": "user", "content": tool_results_for_claude})
+
+        synth_resp = client.messages.create(
+            model=anthropic_model,
+            temperature=0.2,
+            messages=synth_msgs,
+            max_tokens=3072,
+            system=synthesizer_system,
+            # No tools passed — synthesizer only generates text
+        )
+
+        print(f"======== Synthesizer stop_reason={synth_resp.stop_reason}, "
+              f"blocks=[{', '.join(f'text({len(b.text)} chars)' if hasattr(b, 'text') else 'other' for b in synth_resp.content)}]")
+
+        for block in synth_resp.content:
+            if hasattr(block, "text") and block.text.strip():
+                collected_messages.append({"type": "text", "content": block.text})
+
+        # Build flat assistant text for the history returned to the frontend
+        assistant_text_parts = [m["content"] for m in collected_messages if m["type"] == "text"]
+        assistant_text = "\n\n".join(assistant_text_parts)
+        if assistant_text.strip():
+            history.append({"role": "assistant", "content": assistant_text})
+
+        print(f"======== Claude success. {len(collected_messages)} display messages.")
+        return (True, "", collected_messages)
+
+    except Exception:
+        err = traceback.format_exc()
+        print(err)
+        return (False, "Failed to get the response from the AI. Please copy your input, refresh the page and try again.", [])
+
+
+# ---------------------------------------------------------------------------
+# GLKB integration  (unchanged)
+# ---------------------------------------------------------------------------
+
+def glkb_chat(question: str) -> Tuple[bool, str]:
+    """
+    Safe-ish GLKB SSE caller.
+    - No history (messages = [])
+    - Handles SSE chunking
+    - Adds basic retries + backoff
+    - Adds caps to avoid runaway memory
+    - Better error messages (HTTP body snippet, content-type, etc.)
+    """
+    URL = GLKB_LLM_AGENT_URL
+    PREFIX = "[AGENT OUTPUT] FinalAnswerAgent | Output:"
+
+    CONNECT_TIMEOUT_S = 10
+    READ_TIMEOUT_S = 180
+    MAX_ATTEMPTS = 3
+    BACKOFF_S = 1.5
+
+    MAX_CHUNKS = 1000
+    MAX_TOTAL_CHARS = 2_000_000
+
+    payload = {"question": question, "messages": []}
+
+    last_err = None
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with requests.Session() as session:
+                with session.post(
+                    URL,
+                    json=payload,
+                    stream=True,
+                    timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+                    verify=False,
+                    headers={
+                        "Accept": "text/event-stream",
+                        "Content-Type": "application/json",
+                        "User-Agent": "glkb-python-client/1.0",
+                    },
+                ) as r:
+                    if r.status_code < 200 or r.status_code >= 300:
+                        body_snip = ""
+                        try:
+                            body_snip = (r.text or "")[:800]
+                        except Exception:
+                            body_snip = "<unable to read body>"
+                        ct = r.headers.get("content-type", "")
+                        return (
+                            False,
+                            f"HTTP {r.status_code}. Content-Type: {ct}. Body (first 800 chars): {body_snip}",
+                        )
+
+                    ct = (r.headers.get("content-type") or "").lower()
+                    if "text/event-stream" not in ct:
+                        body_snip = ""
+                        try:
+                            body_snip = (r.text or "")[:800]
+                        except Exception:
+                            body_snip = "<unable to read body>"
+                        return (
+                            False,
+                            f"Expected SSE (text/event-stream) but got Content-Type: {ct}. Body (first 800 chars): {body_snip}",
+                        )
+
+                    chunks: List[str] = []
+                    total_chars = 0
+
+                    for raw_line in r.iter_lines(decode_unicode=True):
+                        if raw_line is None:
+                            continue
+
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+
+                        data_str = line[len("data:"):].strip()
+                        if not data_str:
+                            continue
+                        if data_str == "[DONE]":
+                            break
+
+                        try:
+                            obj = json.loads(data_str)
+                            step = obj.get("step")
+
+                            if step == "Complete":
+                                final_resp = obj.get("response")
+                                final_text = ""
+
+                                if isinstance(final_resp, str) and final_resp.strip():
+                                    final_text = final_resp.strip()
+
+                                refs = obj.get("references")
+                                if isinstance(refs, list) and refs:
+                                    ref_lines = []
+                                    for i, r in enumerate(refs[:10], start=1):
+                                        if not isinstance(r, list) or len(r) < 6:
+                                            continue
+
+                                        title = r[0] or "Untitled"
+                                        url = r[1] or ""
+                                        year = r[3] or ""
+                                        journal = r[4] or ""
+                                        authors = r[5] or []
+
+                                        if isinstance(authors, list):
+                                            authors = [a for a in authors if a.strip()]
+                                            author_str = ", ".join(authors[:5])
+                                            if len(authors) > 5:
+                                                author_str += " et al."
+                                        else:
+                                            author_str = ""
+
+                                        line = f"{i}. {title}\n   {author_str} ({year}) — {journal}\n   {url}"
+                                        ref_lines.append(line)
+
+                                    if ref_lines:
+                                        final_text += "\n\nReferences:\n" + "\n".join(ref_lines)
+
+                                return True, final_text.strip()
+
+                        except json.JSONDecodeError:
+                            continue
+
+                        content = obj.get("content")
+                        if not isinstance(content, str) or not content:
+                            continue
+
+                        idx = content.find(PREFIX)
+                        if idx == -1:
+                            continue
+
+                        piece = content[idx + len(PREFIX):].lstrip()
+                        if not piece:
+                            continue
+
+                        if len(chunks) >= MAX_CHUNKS:
+                            break
+                        if total_chars + len(piece) > MAX_TOTAL_CHARS:
+                            remaining = MAX_TOTAL_CHARS - total_chars
+                            if remaining > 0:
+                                chunks.append(piece[:remaining])
+                                total_chars += remaining
+                            break
+
+                        chunks.append(piece)
+                        total_chars += len(piece)
+
+                    if not chunks:
+                        return (
+                            False,
+                            "No FinalAnswerAgent output found in SSE stream. "
+                            "The agent may have failed, returned only traces, or the prefix format changed.",
+                        )
+
+                    result = "\n".join(chunks).strip()
+                    return True, result
+
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_err = f"{type(e).__name__}: {e}"
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(BACKOFF_S * attempt)
+                continue
+            return False, f"Network/timeout after {MAX_ATTEMPTS} attempts: {last_err}"
+
+        except requests.exceptions.RequestException as e:
+            last_err = f"{type(e).__name__}: {e}"
+            return False, f"HTTP/network error: {last_err}"
+
+        except Exception:
+            last_err = traceback.format_exc()
+            return False, last_err
+
+    return False, last_err or "Unknown error"
+
+
+# ---------------------------------------------------------------------------
+# HTTP handler  (API contract unchanged)
+# ---------------------------------------------------------------------------
+
+def process_ai_chat(request, path: str):
     print('AI chat')
-    user_input = request.rfile.read(int(request.headers['Content-Length'])).decode('utf-8')
-    if(within_rate_limit() == False):
+    MAX_BODY_BYTES = 256_000
+
+    cl = int(request.headers.get("Content-Length", "0") or "0")
+    if cl <= 0 or cl > MAX_BODY_BYTES:
+        request.send_response(413)
+        request.send_header("Content-Length", 0)
+        request.send_header("Access-Control-Allow-Origin", "*")
+        request.end_headers()
+        return
+
+    user_input = request.rfile.read(cl).decode("utf-8", errors="replace")
+    if within_rate_limit() == False:
         request.send_response(429)
         request.send_header('Connection', 'keep-alive')
         request.send_header('Content-Length', 0)
@@ -320,43 +1045,27 @@ def process_ai_chat(request, path:str):
         request.wfile.write(b'')
         request.wfile.flush()
         return
-    try:
-        history: list = json.loads(user_input)
-    except json.JSONDecodeError:
-        bad = b'Invalid JSON body'
-        request.send_response(400)
-        request.send_header('Connection', 'keep-alive')
-        request.send_header('Content-Length', len(bad))
-        request.send_header('Access-Control-Allow-Origin', '*')
-        request.end_headers()
-        request.wfile.write(bad)
-        request.wfile.flush()
-        return
-    if not isinstance(history, list) or len(history) == 0:
-        bad = b'History must be a non-empty JSON array of {role, content} objects (same as the browser sends).'
-        request.send_response(400)
-        request.send_header('Connection', 'keep-alive')
-        request.send_header('Content-Length', len(bad))
-        request.send_header('Access-Control-Allow-Origin', '*')
-        request.end_headers()
-        request.wfile.write(bad)
-        request.wfile.flush()
-        return
-    for item in history:
-        if not isinstance(item, dict) or item.get('role') not in ('user', 'assistant') or not isinstance(item.get('content'), str):
-            bad = b'Each history item must be {"role": "user"|"assistant", "content": "<string>"}.'
-            request.send_response(400)
-            request.send_header('Connection', 'keep-alive')
-            request.send_header('Content-Length', len(bad))
-            request.send_header('Access-Control-Allow-Origin', '*')
-            request.end_headers()
-            request.wfile.write(bad)
-            request.wfile.flush()
-            return
-    error_msg = ''
+
+    history: list = json.loads(user_input)
+    MAX_TURNS = 30
+    if isinstance(history, list) and len(history) > MAX_TURNS:
+        history = history[-MAX_TURNS:]
+
+    MAX_MSG_CHARS = 4000
+
+    def _trim_msg_content(m):
+        c = m.get("content", "")
+        if isinstance(c, str) and len(c) > MAX_MSG_CHARS:
+            m = dict(m)
+            m["content"] = c[:MAX_MSG_CHARS] + "…[truncated]"
+        return m
+
+    history = [_trim_msg_content(m) for m in history if isinstance(m, dict)]
+
     log_queue.put(json.dumps({'history': history}, ensure_ascii=False))
-    success, error_msg, result = get_gpt_resp(history)
-    if(error_msg != ''):
+    success, error_msg, messages = get_gpt_resp(history)
+
+    if error_msg:
         request.send_response(500)
         error_msg = error_msg.encode('utf-8')
         request.send_header('Content-Length', len(error_msg))
@@ -366,9 +1075,7 @@ def process_ai_chat(request, path:str):
         request.wfile.write(error_msg)
         request.wfile.flush()
         return
-    messages = []
-    messages = generate_messgae(result)
-        
+
     request.send_response(200)
     resp_data = json.dumps({'history': history, 'messages': messages}, ensure_ascii=False)
     resp_data = resp_data.encode('utf-8')
@@ -380,27 +1087,21 @@ def process_ai_chat(request, path:str):
     request.wfile.flush()
     return
 
-log_file = None
-log_queue = Queue()
 
-try:
-    f = open(LOG_PATH, 'r')
-except:
-    log_file = open(LOG_PATH, 'w')
-if (log_file == None):
-    f.close()
-    log_file = open(LOG_PATH, 'a')
-    log_file.write('\n\n')
+# ---------------------------------------------------------------------------
+# Async log writer
+# ---------------------------------------------------------------------------
+
+log_queue = Queue()
 
 
 def write_logs():
-    log_file.write(format(time() * 1000, '.3f') + ': Server started\n')
-    log_file.flush()
-    while True:
-        l = log_queue.get()
-        current_time = format(time() * 1000, '.3f')
-        l = current_time + ': ' + l + '\n'
-        log_file.write(l)
-        log_file.flush()
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"{time.time()*1000:.3f}: Server started!\n")
+        f.flush()
+        while True:
+            item = log_queue.get()
+            f.write(f"{time.time()*1000:.3f}: {item}\n")
+            f.flush()
 
 start_new_thread(write_logs, ())
