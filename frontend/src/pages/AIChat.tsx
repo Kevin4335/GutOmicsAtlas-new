@@ -883,7 +883,7 @@ export default function AIChat() {
           flexDirection: "column",
           alignItems: "center",
           pb: 0,
-          pt: 2,
+          pt: 0,
           backgroundColor: "transparent",
         }}
       >
