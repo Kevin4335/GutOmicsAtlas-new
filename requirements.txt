@@ -1,2 +1,25 @@
-# Used by ai.py to downscale PNGs before sending to Anthropic vision API (max dimension limit).
+# GutOmicsAtlas webserver (Python)
+#
+# This file is intentionally "runtime oriented": what `server.py` / `ai.py` import at runtime.
+# (Frontend deps live under `frontend/package.json`.)
+#
+# NOTE: Packages prefixed with `my*` are internal but pip-installable in this environment.
+
+# --- LLM / HTTP ---
+openai>=1.0.0
+anthropic>=0.25.0
+requests>=2.31.0
+
+# --- Images / PDFs ---
+# Used by `ai.py` to downscale PNGs before sending to vision models.
 Pillow>=10.0.0
+# Provides `fitz` import used in `utils.py` / `convert.py`.
+PyMuPDF>=1.23.0
+
+# --- Optional local config loading ---
+python-dotenv>=1.0.0
+
+# --- Internal packages (pip-installable here) ---
+myBasics
+mySecrets
+myHttp

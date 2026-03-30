@@ -1,146 +1,110 @@
-# GutOmicsAtlas — Python server + React frontend
+# GutOmicsAtlas — webserver ops (Python + React + R)
 
-## What runs where
+This repo runs as:
 
-| Piece | Role |
-|--------|------|
-| **`server.py`** | HTTP server: Vite **production** build (`frontend/dist/`), legacy **`/html/*`** (if the `html/` dir exists), **`/api/*`**, **`POST /chat`**, **`/data/*`**, **`/generated/*`**, **`/imgs/*`** (server-side `imgs/` with `no_embed` in the name), and **`/st/*` / `/sm/*`** (same files as under `/data/st/` and `/data/sm/`). Unknown paths fall back to the React SPA `index.html`. |
-| **`frontend/`** | React + TypeScript source. **Dev:** Vite on port **5173** with a proxy to Python. **Prod:** `npm run build` writes **`frontend/dist/`**, which `server.py` serves. |
+- **Python webserver**: `server.py` (serves the React build + API endpoints like `POST /chat`)
+- **R plot backends**: multiple `Rscript` processes (httpuv) started in `screen`
+- **React frontend**: built into `frontend/dist/` and served by `server.py`
 
-Local development uses **two processes** (Python API + Vite). Production can be **one process** (`python server.py` after a build).
+The *operational* way to restart things on the server is via:
 
----
-
-## Prerequisites
-
-- **Python 3** with your existing modules (`myBasics`, `mySecrets`, `R_http`, `ai`, etc.).
-- **Node.js 18+** and **npm** (20 LTS recommended). If the build dies with **`SyntaxError: Unexpected token '?'`** inside `node_modules/typescript/.../_tsc.js`, the runtime is too old — see **Upgrade Node (Ubuntu server, no nvm)** below.
-- **tmux** (optional but handy for two panes): `sudo apt install -y tmux` on Debian/Ubuntu.
+- `utils/restart_r_servers.sh`
+- `utils/restart_webserver.sh`
 
 ---
 
-## Environment variables
+## Prerequisites (server machine)
 
-| Variable | Effect |
-|----------|--------|
-| **`ATLAS_IS_SERVER`** | `false` / `0`: dev mode — listen on **9037**, lighter caching. Unset or `true`: production — listen on **80** by default (needs root or `CAP_NET_BIND_SERVICE`). |
-| **`ATLAS_PORT`** | When `ATLAS_IS_SERVER` is true, overrides the port (e.g. **`8000`** if you cannot bind 80). |
-| **`VITE_DEV_API_PROXY`** | Only for **Vite dev** (`npm run dev`). Base URL for the Python API; default **`http://127.0.0.1:9037`**. |
-| **`VITE_API_BASE`** | Optional at **build time** for `AIChat` only. **Leave unset** so chat uses same-origin **`/chat`** (nginx on :80 → Python :8000). Setting this to **`http://host:8000`** often breaks in the browser with *NetworkError* if 8000 is not open on the firewall. |
+- **Python 3** + pip packages from `requirements.txt`
+- **Node.js 18+** + npm (needed because `restart_webserver.sh` does `npm install` + `npm run build`)
+- **GNU screen** and **lsof** (both scripts rely on them)
+- **R** + whatever R packages your scripts expect
 
----
-
-## Upgrade Node (Ubuntu server, no nvm)
-
-Stock Ubuntu often ships **Node 12**; this frontend needs **18+**. You do **not** need `nvm` on the server. Use [NodeSource](https://github.com/nodesource/distributions) to install Node **20.x**:
+Ubuntu/Debian helpers:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get update
-sudo apt-get install -y nodejs
-node -v   # should show v20.x
-```
-
-Then reinstall frontend deps if needed: `cd frontend && rm -rf node_modules && npm install`.
-
-If you prefer **nvm**, install it once from [nvm-sh/nvm](https://github.com/nvm-sh/nvm#installing-and-updating) (it is a shell function, not an apt package), then run `nvm install 20`.
-
----
-
-## First-time setup
-
-```bash
-cd frontend
-npm install
+sudo apt-get install -y screen lsof
 ```
 
 ---
 
-## Local development (Vite + Python)
-
-1. Start Python on **9037**:
+## Python dependencies
 
 ```bash
-cd /path/to/webserver
-export ATLAS_IS_SERVER=false
-python server.py
+cd /home/ubuntu/website/webserver
+python3 -m pip install -r requirements.txt
 ```
 
-2. In another terminal (or a second tmux pane), start Vite:
-
-```bash
-cd /path/to/webserver/frontend
-npm run dev
-```
-
-3. Open **http://127.0.0.1:5173** — that is the UI you should use in dev (hot reload).
-
-Vite proxies these paths to Python (`frontend/vite.config.ts`): **`/api`**, **`/chat`**, **`/data`**, **`/generated`**, **`/imgs`**, **`/st`** (rewritten to `/data/st/...`), **`/sm`** (rewritten to `/data/sm/...`).
-
-**http://127.0.0.1:9037** is the Python server alone. It serves the built React app from `frontend/dist/` if you have run **`npm run build`**; without a build, **`/`** returns **404**.
-
-### tmux example (two panes)
-
-```bash
-cd /path/to/webserver
-tmux new -s atlas
-# pane 1:
-export ATLAS_IS_SERVER=false && python server.py
-# Ctrl-b "  or  Ctrl-b %  to split, then in pane 2:
-cd frontend && npm run dev
-```
-
-Detach **Ctrl-b d**, reattach **`tmux attach -t atlas`**, kill **`tmux kill-session -t atlas`**.
-
-If you still use GNU **screen**, list with `screen -ls`, stop one with `screen -X -S <name> quit`.
+> `myBasics`, `mySecrets`, `myHttp` are internal-but-installable packages here; they are included in `requirements.txt`.
 
 ---
 
-## Production (single `python server.py`)
+## Restart the R backends
 
-From the **`webserver`** directory (parent of `frontend/`):
-
-```bash
-cd frontend && npm run build && cd ..
-python server.py
-```
-
-Or use **`./build-and-serve.sh`** (same steps). To run inside **tmux** so the process survives SSH disconnect:
+`utils/restart_r_servers.sh` kills existing `screen` sessions and any processes bound to the known ports, then restarts the R servers in detached `screen` sessions.
 
 ```bash
-./build-and-serve.sh --tmux              # attach to this terminal; Ctrl-b d to detach
-./build-and-serve.sh --tmux --detach    # start session in background; tmux attach -t atlas
+cd /home/ubuntu/website/webserver
+bash utils/restart_r_servers.sh
 ```
 
-Session name defaults to **`atlas`**; override with **`TMUX_SESSION=myname`**. Raw one-liner from `webserver/`:  
-`tmux new-session -s atlas -c "$PWD" ./build-and-serve.sh --_inner`
+### What it starts
 
-Ensure **`ATLAS_IS_SERVER`** is unset or `true`. Default listen address is **0.0.0.0:80**, which **requires root** on Linux. Run **`sudo python server.py`**, or set **`ATLAS_PORT=8000`** (or any port ≥ 1024). **`./build-and-serve.sh`** sets **`ATLAS_PORT=8000` automatically** when not root so the build + start flow works as a normal user; put **nginx** (or similar) on **:80** and **proxy_pass** to **8000** if you need a public 80/443 front door.
+- **`gut_scrna_epi`**: port **9025** (`resources/scRNAfunction.R`)
+- **`gut_atac_all`**: port **9026** (`resources/atacallcells.R`)
+- **`gut_atac_epi`**: port **9027** (`resources/atacepithelial.R`)
+- **`gut_scrna_eec`**: port **9028** (`resources/EECplot.R`)
 
-You may still put **nginx** (or similar) in front for TLS; it is not required for a single-host setup.
+### Inspect / attach to a session
+
+```bash
+screen -ls
+screen -r gut_scrna_epi
+```
+
+Detach: `Ctrl+A`, then `D`.
 
 ---
 
-## Frontend maintenance commands
+## Restart the Python webserver (+ build frontend)
 
-| Task | Command |
-|------|---------|
-| Dev server | `cd frontend && npm run dev` |
-| Production build | `cd frontend && npm run build` |
-| Preview build locally | `cd frontend && npm run preview` |
-| Lint | `cd frontend && npm run lint` |
-| Regenerate ST gene list | `cd frontend && npm run extract:st-genes` |
-| Regenerate scRNA gene list | `cd frontend && npm run extract:scrna-genes` |
+`utils/restart_webserver.sh` does the following:
 
-### Build: `Cannot find native binding` (Rolldown)
+- stops existing `screen` sessions that look like prior webservers
+- kills anything on **port 80** (backup)
+- runs `npm install` + `npm run build` in `frontend/` (produces `frontend/dist/`)
+- starts `python3 server.py` inside a detached `screen` session named **`webserver`**
+- writes a log to **`/tmp/webserver_screen.log`**
 
-**Vite 8** ships with **Rolldown** and optional **native** packages; on some servers `npm install` skips or mismatches them and `vite build` fails with that error. This repo pins **Vite 6** (Rollup + esbuild, no Rolldown) to avoid that. If you upgrade to Vite 8 later, try a clean install: `rm -rf node_modules package-lock.json && npm install`, and ensure Node matches your OS/arch (e.g. `linux-x64`).
+```bash
+cd /home/ubuntu/website/webserver
+bash utils/restart_webserver.sh
+```
+
+### Inspect / attach to the webserver
+
+```bash
+screen -ls
+screen -r webserver
+```
+
+If the screen session exits immediately, check:
+
+- `/tmp/webserver_screen.log`
 
 ---
 
-## Static assets and images
+## Common gotchas
 
-- **Dev:** Files under **`frontend/public/`** are served by Vite. Requests to **`/imgs/...`** that are not satisfied there are **proxied** to Python (which reads **`webserver/imgs/`** for `no_embed` assets).
-- **Prod:** Vite copies `public/` into **`frontend/dist/`**; `server.py` serves any matching file under `dist/` before SPA fallback. Server-side **`./imgs/`** is still used for legacy **`no_embed`** plot downloads.
+### Frontend build fails
 
-If something 404s, add the file under **`frontend/public/`** (or merge into **`webserver/imgs/`** for backend-served `no_embed` images), then rebuild for production.
+`restart_webserver.sh` will warn if `npm run build` fails. In that case, the Python server may still start, but `/` may not serve the React UI correctly until `frontend/dist/` exists.
+
+### Port 80 requires privileges
+
+The script expects the server to bind **port 80**. If you run as a non-root user and binding fails, either:
+
+- run the restart script as root, or
+- change the server to bind a high port and put a reverse proxy in front (nginx), or
+- change the script to kill/check a different port.
