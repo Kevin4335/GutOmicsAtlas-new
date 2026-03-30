@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { useLocation } from "react-router-dom";
 import {
   Box,
@@ -57,6 +57,68 @@ const dashedSpinnerSx = {
     strokeLinecap: "butt",
   },
 };
+
+/** Assistant markdown: base size + line height (readable body text). */
+const AI_CHAT_BODY = {
+  fontSize: "0.9375rem",
+  lineHeight: 1.72,
+  color: "#1a1a1a",
+  letterSpacing: "0.01em",
+} as const;
+
+function AiMarkdownLink({ href = "", children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const h = href.toLowerCase();
+  const pubmed =
+    h.includes("pubmed.ncbi.nlm.nih.gov") ||
+    h.includes("ncbi.nlm.nih.gov/pubmed") ||
+    /\/pubmed\/\d+/i.test(href);
+  const doi = h.includes("doi.org");
+
+  const palette = pubmed
+    ? {
+        color: "#0d9488",
+        border: "rgba(13, 148, 136, 0.38)",
+        hoverColor: "#0f766e",
+        hoverBorder: "rgba(15, 118, 110, 0.55)",
+      }
+    : doi
+      ? {
+          color: "#2563eb",
+          border: "rgba(37, 99, 235, 0.32)",
+          hoverColor: "#1d4ed8",
+          hoverBorder: "rgba(29, 78, 216, 0.5)",
+        }
+      : {
+          color: "var(--accent)",
+          border: "rgba(222, 51, 65, 0.3)",
+          hoverColor: "#c41f2d",
+          hoverBorder: "rgba(196, 31, 45, 0.45)",
+        };
+
+  return (
+    <Box
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      {...rest}
+      sx={{
+        color: palette.color,
+        textDecoration: "none",
+        fontWeight: 600,
+        fontSize: "0.96em",
+        borderBottom: `1px solid ${palette.border}`,
+        transition: "color 0.15s ease, border-color 0.15s ease",
+        "&:hover": {
+          color: palette.hoverColor,
+          borderBottomColor: palette.hoverBorder,
+        },
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
 
 export default function AIChat() {
   const location = useLocation();
@@ -364,10 +426,11 @@ export default function AIChat() {
                   >
                     <Typography
                       sx={{
-                        fontSize: "0.85rem",
-                        lineHeight: 1.5,
+                        fontSize: "0.9rem",
+                        lineHeight: 1.65,
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
+                        letterSpacing: "0.01em",
                       }}
                     >
                       {msg.content}
@@ -455,86 +518,235 @@ export default function AIChat() {
                       </Box>
                     ) : (
                       <Box
+                        className="ai-chat-prose"
                         sx={{
-                          fontSize: "0.85rem",
-                          lineHeight: 1.6,
-                          color: "#000000",
+                          ...AI_CHAT_BODY,
                           wordBreak: "break-word",
+                          maxWidth: "100%",
+                          "& p": { margin: 0 },
+                          "& p + p": { mt: 1.1 },
+                          "& ul, & ol": {
+                            my: 1.15,
+                            pl: 2.75,
+                            listStylePosition: "outside",
+                          },
+                          "& ul": { listStyleType: "disc" },
+                          "& ol": { listStyleType: "decimal" },
+                          "& li": {
+                            display: "list-item",
+                            mb: 0.45,
+                            pl: 0.35,
+                          },
+                          "& li::marker": { color: "#7a7a7a", fontWeight: 500 },
+                          "& li > p": { mb: 0.35 },
+                          "& ul ul, & ol ol, & ul ol, & ol ul": { my: 0.5 },
                         }}
                       >
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
-                            a: (props) => (
-                              <a {...props} target="_blank" rel="noopener noreferrer" className="ai-link" />
+                            a: (props) => <AiMarkdownLink {...props} />,
+                            p: ({ node: _n, ...props }) => (
+                              <Typography
+                                component="p"
+                                sx={{
+                                  fontSize: AI_CHAT_BODY.fontSize,
+                                  lineHeight: AI_CHAT_BODY.lineHeight,
+                                  color: AI_CHAT_BODY.color,
+                                  mb: 1.1,
+                                  letterSpacing: AI_CHAT_BODY.letterSpacing,
+                                }}
+                                {...props}
+                              />
                             ),
-                            p: (props) => (
-                              <Typography component="p" sx={{ fontSize: "0.85rem", lineHeight: 1.6, mb: 1 }} {...props} />
+                            ul: ({ node: _n, ...props }) => (
+                              <Box component="ul" sx={{ m: 0 }} {...props} />
                             ),
-                            li: (props) => (
-                              <li style={{ marginBottom: "0.25rem" }} {...props} />
+                            ol: ({ node: _n, ...props }) => (
+                              <Box component="ol" sx={{ m: 0 }} {...props} />
                             ),
-                            h1: (props) => (
-                              <Typography component="h1" sx={{ fontSize: "1.15rem", fontWeight: 700, mt: 1.2, mb: 0.8 }} {...props} />
+                            li: ({ node: _n, ...props }) => (
+                              <Box
+                                component="li"
+                                sx={{
+                                  fontSize: AI_CHAT_BODY.fontSize,
+                                  lineHeight: AI_CHAT_BODY.lineHeight,
+                                  color: AI_CHAT_BODY.color,
+                                }}
+                                {...props}
+                              />
                             ),
-                            h2: (props) => (
-                              <Typography component="h2" sx={{ fontSize: "1.05rem", fontWeight: 700, mt: 1.1, mb: 0.7 }} {...props} />
+                            h1: ({ node: _n, ...props }) => (
+                              <Typography
+                                component="h1"
+                                sx={{
+                                  fontSize: "1.2rem",
+                                  fontWeight: 700,
+                                  lineHeight: 1.35,
+                                  mt: 1.75,
+                                  mb: 0.85,
+                                  color: "#111",
+                                }}
+                                {...props}
+                              />
                             ),
-                            h3: (props) => (
-                              <Typography component="h3" sx={{ fontSize: "0.98rem", fontWeight: 700, mt: 1.0, mb: 0.6 }} {...props} />
+                            h2: ({ node: _n, ...props }) => (
+                              <Typography
+                                component="h2"
+                                sx={{
+                                  fontSize: "1.08rem",
+                                  fontWeight: 700,
+                                  lineHeight: 1.4,
+                                  mt: 1.5,
+                                  mb: 0.75,
+                                  color: "#151515",
+                                }}
+                                {...props}
+                              />
+                            ),
+                            h3: ({ node: _n, ...props }) => (
+                              <Typography
+                                component="h3"
+                                sx={{
+                                  fontSize: "1rem",
+                                  fontWeight: 700,
+                                  lineHeight: 1.45,
+                                  mt: 1.25,
+                                  mb: 0.65,
+                                  color: "#1a1a1a",
+                                }}
+                                {...props}
+                              />
+                            ),
+                            strong: ({ node: _n, ...props }) => (
+                              <Box component="strong" sx={{ fontWeight: 700, color: "#111" }} {...props} />
+                            ),
+                            em: ({ node: _n, ...props }) => (
+                              <Box component="em" sx={{ fontStyle: "italic", color: "#333" }} {...props} />
+                            ),
+                            blockquote: ({ node: _n, children }) => (
+                              <Box
+                                component="blockquote"
+                                sx={{
+                                  borderLeft: "3px solid rgba(222, 51, 65, 0.28)",
+                                  pl: 2,
+                                  pr: 1,
+                                  py: 0.75,
+                                  my: 1.35,
+                                  bgcolor: "rgba(0,0,0,0.025)",
+                                  borderRadius: "0 8px 8px 0",
+                                  color: "#444",
+                                  fontSize: "0.9rem",
+                                  lineHeight: 1.65,
+                                }}
+                              >
+                                {children}
+                              </Box>
+                            ),
+                            hr: () => (
+                              <Box
+                                component="hr"
+                                sx={{
+                                  border: "none",
+                                  borderTop: "1px solid #e6e6e6",
+                                  my: 2,
+                                }}
+                              />
+                            ),
+                            table: ({ node: _n, children }) => (
+                              <Box sx={{ overflowX: "auto", my: 1.25 }}>
+                                <Box
+                                  component="table"
+                                  sx={{
+                                    borderCollapse: "collapse",
+                                    width: "100%",
+                                    fontSize: "0.875rem",
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  {children}
+                                </Box>
+                              </Box>
+                            ),
+                            thead: ({ node: _n, ...props }) => <Box component="thead" {...props} />,
+                            tbody: ({ node: _n, ...props }) => <Box component="tbody" {...props} />,
+                            tr: ({ node: _n, ...props }) => <Box component="tr" {...props} />,
+                            th: ({ node: _n, ...props }) => (
+                              <Box
+                                component="th"
+                                sx={{
+                                  border: "1px solid #e0e0e0",
+                                  px: 1,
+                                  py: 0.65,
+                                  textAlign: "left",
+                                  fontWeight: 700,
+                                  bgcolor: "#f7f7f7",
+                                }}
+                                {...props}
+                              />
+                            ),
+                            td: ({ node: _n, ...props }) => (
+                              <Box
+                                component="td"
+                                sx={{
+                                  border: "1px solid #e8e8e8",
+                                  px: 1,
+                                  py: 0.55,
+                                  verticalAlign: "top",
+                                }}
+                                {...props}
+                              />
                             ),
                             pre: ({ children }) => (
-                            <Box
-                              component="pre"
-                              sx={{
-                                backgroundColor: "#f5f5f5",
-                                p: 1,
-                                borderRadius: "10px",
-                                overflowX: "auto",
-                                mt: 0.5,
-                                mb: 0.75,
-                              }}
-                            >
-                              {children}
-                            </Box>
-                          ),
-
-                          code: ({ className, children, ...props }) => {
-                            const isBlock =
-                              typeof className === "string" && className.includes("language-");
-
-                            // block code (```js etc)
-                            if (isBlock) {
+                              <Box
+                                component="pre"
+                                sx={{
+                                  backgroundColor: "#f4f4f5",
+                                  p: 1.25,
+                                  borderRadius: "10px",
+                                  overflowX: "auto",
+                                  mt: 0.75,
+                                  mb: 1,
+                                  fontSize: "0.8125rem",
+                                  lineHeight: 1.55,
+                                  border: "1px solid #eaeaea",
+                                }}
+                              >
+                                {children}
+                              </Box>
+                            ),
+                            code: ({ className, children, node: _n, ...props }) => {
+                              const isBlock =
+                                typeof className === "string" && className.includes("language-");
+                              if (isBlock) {
+                                return (
+                                  <Box
+                                    component="code"
+                                    className={className}
+                                    sx={{ fontSize: "0.8125rem", fontFamily: "ui-monospace, monospace" }}
+                                    {...props}
+                                  >
+                                    {children}
+                                  </Box>
+                                );
+                              }
                               return (
                                 <Box
                                   component="code"
-                                  className={className}
-                                  sx={{ fontSize: "0.82rem" }}
+                                  sx={{
+                                    backgroundColor: "#f0f0f1",
+                                    px: 0.45,
+                                    py: 0.15,
+                                    borderRadius: "5px",
+                                    fontSize: "0.84em",
+                                    fontFamily: "ui-monospace, monospace",
+                                  }}
                                   {...props}
                                 >
                                   {children}
                                 </Box>
                               );
-                            }
-
-                            // inline code
-                            return (
-                              <Box
-                                component="code"
-                                sx={{
-                                  backgroundColor: "#f5f5f5",
-                                  px: 0.4,
-                                  py: 0.1,
-                                  borderRadius: "6px",
-                                  fontSize: "0.82rem",
-                                }}
-                                {...props}
-                              >
-                                {children}
-                              </Box>
-                            );
-                          },
-
+                            },
                           }}
                         >
                           {msg.content}
