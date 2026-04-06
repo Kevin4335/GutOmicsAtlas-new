@@ -664,10 +664,12 @@ def execute_tool(
         gq = urllib.parse.quote(gene, safe="")
         stq = urllib.parse.quote(sample_type, safe="")
         port = 9025 if cell_type == "epithelial" else 9028
-        url = f"{base}:{port}/genes/{gq}?sample_type={stq}"
         desc = f"scRNA plot gene={gene}, cell_type={cell_type}, sample_type={sample_type}"
-        png_bytes = _fetch_png_bytes(url)
-        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        fetch_url = f"{base}:{port}/genes/{gq}?sample_type={stq}"
+        path_prefix = "scrna-epithelial" if cell_type == "epithelial" else "scrna-eec"
+        display_url = f"/api/{path_prefix}/genes/{gq}?sample_type={stq}"
+        png_bytes = _fetch_png_bytes(fetch_url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, display_url)
         return tool_result_content, display_msg
 
     if name == "snATAC":
@@ -680,10 +682,12 @@ def execute_tool(
         gene = rna_atac_genes_formatted_to_origin[fg]
         gq = urllib.parse.quote(gene, safe="")
         port = 9026 if cell_type == "all" else 9027
-        url = f"{base}:{port}/genes/{gq}"
         desc = f"snATAC plot gene={gene}, cell_type={cell_type}"
-        png_bytes = _fetch_png_bytes(url)
-        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        fetch_url = f"{base}:{port}/genes/{gq}"
+        path_prefix = "atac-all" if cell_type == "all" else "atac-celltype"
+        display_url = f"/api/{path_prefix}/genes/{gq}"
+        png_bytes = _fetch_png_bytes(fetch_url)
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, display_url)
         return tool_result_content, display_msg
 
     if name == "spatial_transcriptomics":
