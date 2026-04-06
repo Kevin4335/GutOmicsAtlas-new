@@ -41,9 +41,9 @@ except ImportError:
 __all__ = ['process_ai_chat']
 
 # R httpuv plot hosts (scheme + host, no port) — same role as frontend VITE_R_BASE_HOST.
-PLOT_BACKEND_BASE = os.environ.get("PLOT_BACKEND_BASE", "http://128.84.40.118")
+PLOT_BACKEND_BASE = os.environ.get("PLOT_BACKEND_BASE", "http://localhost")
 # Python/nginx public origin for /data/st and /data/sm static figures (not R ports).
-GUT_PUBLIC_DATA_BASE = os.environ.get("GUT_PUBLIC_DATA_BASE", "http://128.84.40.118")
+GUT_PUBLIC_DATA_BASE = os.environ.get("GUT_PUBLIC_DATA_BASE", "http://localhost")
 GLKB_LLM_AGENT_URL = os.environ.get("GLKB_LLM_AGENT_URL", "https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent")
 
 # ---------------------------------------------------------------------------

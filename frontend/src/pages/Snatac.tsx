@@ -5,7 +5,6 @@ import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { LoadingBar } from '../components/LoadingBar'
 import { SCRNA_GENES } from '../data/scrnaGenes'
-import { rImageBaseHost } from '../rImageBase'
 
 type CellType = 'all' | 'epithelial'
 type SnatacTab = 'overview' | 'result'
@@ -79,12 +78,15 @@ const SNATAC_STYLE_TAG = `
 .scrna-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
 `
 
-const R_BASE_HOST = rImageBaseHost()
+const ATAC_PATH: Record<string, string> = {
+  all: '/api/atac-all',
+  celltype: '/api/atac-celltype',
+}
 
 function getSnAtacImageUrl(opts: { loci: string; cellType: CellType }): string {
-  const port = opts.cellType === 'all' ? 9026 : 9027
+  const path = opts.cellType === 'all' ? ATAC_PATH.all : ATAC_PATH.celltype
   const encodedLoci = encodeURIComponent(opts.loci)
-  return `${R_BASE_HOST}:${port}/genes/${encodedLoci}`
+  return `${path}/genes/${encodedLoci}`
 }
 
 /** Same gene bank as scRNA; hide suggestions when input looks like a genomic interval. */

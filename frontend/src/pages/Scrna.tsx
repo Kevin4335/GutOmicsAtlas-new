@@ -6,7 +6,6 @@ import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { LoadingBar } from '../components/LoadingBar'
 import { SCRNA_GENES } from '../data/scrnaGenes'
-import { rImageBaseHost } from '../rImageBase'
 
 type CellType = 'epithelial' | 'enteroendocrine'
 type Stage = 'fetal' | 'adult'
@@ -300,19 +299,16 @@ const input: CSSProperties = {
 
 const subtle: CSSProperties = { color: 'var(--muted)', fontSize: '0.82rem', lineHeight: 1.65 }
 
-const R_BASE_HOST = rImageBaseHost()
-
-/** Enteroendocrine (EEC) = 9028 (EECplot.R). Epithelial = 9025 (scRNAfunction.R). */
-const SCRNA_R_PORT: Record<CellType, number> = {
-  enteroendocrine: 9028,
-  epithelial: 9025,
+const SCRNA_PATH: Record<CellType, string> = {
+  enteroendocrine: '/api/scrna-eec',
+  epithelial: '/api/scrna-epithelial',
 }
 
 function getScRnaImageUrl(opts: { gene: string; sampleType: Stage; cellType: CellType }): string {
-  const port = SCRNA_R_PORT[opts.cellType]
+  const path = SCRNA_PATH[opts.cellType]
   const encodedGene = encodeURIComponent(opts.gene)
   const encodedStage = encodeURIComponent(opts.sampleType)
-  return `${R_BASE_HOST}:${port}/genes/${encodedGene}?sample_type=${encodedStage}`
+  return `${path}/genes/${encodedGene}?sample_type=${encodedStage}`
 }
 
 function isValidEmail(email: string): boolean {

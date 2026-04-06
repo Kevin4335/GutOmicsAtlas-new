@@ -150,7 +150,7 @@ app <- list(
 )
 
 
-server <- startServer("0.0.0.0", 9027, app)
+server <- startServer("127.0.0.1", 9027, app)
 cat("Server started on http://localhost:9027\n")
 
 
