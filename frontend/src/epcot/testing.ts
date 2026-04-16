@@ -59,8 +59,12 @@ export async function mockArtifactBlob(artifactId: string): Promise<Blob> {
     normalized.endsWith('.png') ||
     normalized.includes('/data/')
 
-  const preferredPath = wantsPlot ? '/stacked_1d.png' : '/rna.json'
+  const preferredPath = wantsPlot ? '/imgs/stacked_1d.png' : '/rna.json'
   let r = await fetch(preferredPath)
+  if (!r.ok && wantsPlot) {
+    // Backward-compatible fallback for older local layouts.
+    r = await fetch('/stacked_1d.png')
+  }
   if (!r.ok && wantsPlot) {
     // Extra fallback for setups that keep test assets under /data/.
     r = await fetch('/data/stacked_1d.png')
