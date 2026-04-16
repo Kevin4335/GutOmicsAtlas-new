@@ -44,8 +44,6 @@ import {
   mockUploadBam,
 } from '../epcot/testing'
 
-const MAX_WINDOW_BP = 600_000
-
 const CHROM_OPTIONS = [
   ...SUPPORTED_RANGE_LIST.map((r) => r.chrom),
 ] as const
@@ -56,10 +54,6 @@ type WizardStep = 0 | 1 | 2 | 3
 type Props = {
   open: boolean
   onClose: () => void
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n))
 }
 
 function parseBp(raw: string): number | null {
@@ -163,8 +157,8 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
       const r = mockSupportedRange(chrom)
       setRangeError(null)
       setRangeBounds(r)
-      if (!startStr) setStartStr(String(r.min_start))
-      if (!endStr) setEndStr(String(Math.min(r.min_start + MAX_WINDOW_BP, r.max_end)))
+      setStartStr(String(r.min_start))
+      setEndStr(String(r.max_end))
       return
     }
     setRangeError(null)
@@ -173,13 +167,13 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
       const r = await epcotSupportedRange(chrom)
       setRangeBounds({ min_start: r.min_start, max_end: r.max_end })
       setStartStr(String(r.min_start))
-      setEndStr(String(Math.min(r.min_start + MAX_WINDOW_BP, r.max_end)))
+      setEndStr(String(r.max_end))
     } catch (e) {
       if (local) {
         // Use generated local range map when live lookup is unavailable.
         setRangeBounds({ min_start: local.min_start, max_end: local.max_end })
-        if (!startStr) setStartStr(String(local.min_start))
-        if (!endStr) setEndStr(String(Math.min(local.min_start + MAX_WINDOW_BP, local.max_end)))
+        setStartStr(String(local.min_start))
+        setEndStr(String(local.max_end))
       } else {
         setRangeError(
           showTech
@@ -190,7 +184,7 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
         )
       }
     }
-  }, [chrom, showTech, testingMode, startStr, endStr])
+  }, [chrom, showTech, testingMode])
 
   useEffect(() => {
     if (!open) {
@@ -237,39 +231,30 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
   )
 
   const intervalValid = useMemo(() => {
-    if (testingMode) return true
     if (!rangeBounds) return false
     const start = parseBp(startStr)
     const end = parseBp(endStr)
     if (start == null || end == null) return false
     const lo = rangeBounds.min_start
     const hi = rangeBounds.max_end
-    const cs = clamp(start, lo, hi)
-    const ce = clamp(end, lo, hi)
-    if (ce <= cs) return false
-    if (ce - cs > MAX_WINDOW_BP) return false
+    if (start < lo || start > hi) return false
+    if (end < lo || end > hi) return false
+    if (end <= start) return false
     return true
-  }, [rangeBounds, startStr, endStr, testingMode])
+  }, [rangeBounds, startStr, endStr])
 
   const clampedInterval = useMemo(() => {
-    if (testingMode) {
-      const s = parseBp(startStr) ?? 750_000
-      const eRaw = parseBp(endStr) ?? 1_000_000
-      const e = eRaw > s ? eRaw : s + 1_000
-      return { start: s, end: e }
-    }
     if (!rangeBounds) return null
     const start = parseBp(startStr)
     const end = parseBp(endStr)
     if (start == null || end == null) return null
     const lo = rangeBounds.min_start
     const hi = rangeBounds.max_end
-    let cs = clamp(start, lo, hi)
-    let ce = clamp(end, lo, hi)
-    if (ce <= cs) return null
-    if (ce - cs > MAX_WINDOW_BP) ce = cs + MAX_WINDOW_BP
-    return { start: cs, end: ce }
-  }, [rangeBounds, startStr, endStr, testingMode])
+    if (start < lo || start > hi) return null
+    if (end < lo || end > hi) return null
+    if (end <= start) return null
+    return { start, end }
+  }, [rangeBounds, startStr, endStr])
 
   const handleUploadBam = async () => {
     if (!bamFile) return
@@ -487,7 +472,8 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
             <Stack spacing={2.5}>
               <Typography variant="body2" color="text.secondary">
                 Select the chromosome and genomic interval you want scored, then choose one or more model outputs
-                (modalities). The selectable interval is limited to {MAX_WINDOW_BP.toLocaleString()} base pairs per run.
+                (modalities). The start/end coordinates must stay within the supported range for the selected
+                chromosome.
               </Typography>
               <FormControl fullWidth size="small">
                 <InputLabel id="epcot-chrom-label">Chromosome</InputLabel>
@@ -531,8 +517,8 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
               </Stack>
               {!intervalValid && rangeBounds ? (
                 <Typography variant="caption" color="error">
-                  Adjust coordinates so the end is after the start, both lie in the allowed range, and the span is at
-                  most {MAX_WINDOW_BP.toLocaleString()} bp.
+                  Adjust coordinates so both values are inside the supported chromosome range and the end is after the
+                  start.
                 </Typography>
               ) : null}
               {clampedInterval && intervalValid ? (
