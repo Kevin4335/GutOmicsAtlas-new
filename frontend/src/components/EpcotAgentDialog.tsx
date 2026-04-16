@@ -24,12 +24,13 @@ import {
 import ModelTrainingOutlinedIcon from '@mui/icons-material/ModelTrainingOutlined'
 import type { PredictResponse, PredictResultRow } from '../epcot/types'
 import { EPCOT_TESTING_MODE } from '../epcot/config'
+import { EPCOT_MODALITIES } from '../epcot/modalities'
 import { getOrCreateSessionToken } from '../epcot/session'
+import { getSupportedRange, SUPPORTED_RANGE_LIST } from '../epcot/supported_ranges'
 import {
   EpcotHttpError,
   epcotArtifactBlob,
   epcotHealth,
-  epcotModalities,
   epcotPredict,
   epcotSupportedRange,
   epcotUploadBam,
@@ -38,7 +39,6 @@ import {
 } from '../epcot/client'
 import {
   mockArtifactBlob,
-  mockModalities,
   mockPredict,
   mockSupportedRange,
   mockUploadBam,
@@ -47,9 +47,7 @@ import {
 const MAX_WINDOW_BP = 600_000
 
 const CHROM_OPTIONS = [
-  ...Array.from({ length: 22 }, (_, i) => String(i + 1)),
-  'X',
-  'Y',
+  ...SUPPORTED_RANGE_LIST.map((r) => r.chrom),
 ] as const
 
 /** Four researcher-facing steps; step 3 = results. */
@@ -104,7 +102,7 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
   const [startStr, setStartStr] = useState('')
   const [endStr, setEndStr] = useState('')
   const [modalitiesList, setModalitiesList] = useState<string[]>([])
-  const [modalitiesLoading, setModalitiesLoading] = useState(false)
+  const modalitiesLoading = false
   const [modalitiesPick, setModalitiesPick] = useState<Record<string, boolean>>({})
   const [bamFile, setBamFile] = useState<File | null>(null)
   const [uploadId, setUploadId] = useState<string | null>(null)
@@ -145,60 +143,52 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
   }, [showTech, testingMode])
 
   const loadModalities = useCallback(async () => {
-    if (testingMode) {
-      const list = mockModalities()
-      setModalitiesList(list)
-      setModalitiesPick(() => {
-        const next: Record<string, boolean> = {}
+    const list = [...EPCOT_MODALITIES]
+    setModalitiesList(list)
+    setModalitiesPick(() => {
+      const next: Record<string, boolean> = {}
+      if (testingMode) {
         for (const m of list) next[m] = true
-        return next
-      })
-      return
-    }
-    setModalitiesLoading(true)
-    setUserMessage(null)
-    setTechError(null)
-    try {
-      const list = await epcotModalities()
-      setModalitiesList(list)
-      setModalitiesPick(() => {
-        const next: Record<string, boolean> = {}
+      } else {
         const first = list[0]
         for (const m of list) next[m] = list.length === 1 ? true : m === first
-        return next
-      })
-    } catch (e) {
-      setUserMessage(friendlyServiceError(e))
-      if (showTech) setTechError(e instanceof EpcotHttpError ? e.message : String(e))
-    } finally {
-      setModalitiesLoading(false)
-    }
-  }, [showTech, testingMode])
+      }
+      return next
+    })
+  }, [testingMode])
 
   const loadRange = useCallback(async () => {
+    const local = getSupportedRange(chrom)
     if (testingMode) {
-      const r = mockSupportedRange()
+      const r = mockSupportedRange(chrom)
       setRangeError(null)
       setRangeBounds(r)
-      if (!startStr) setStartStr('750000')
-      if (!endStr) setEndStr('1000000')
+      if (!startStr) setStartStr(String(r.min_start))
+      if (!endStr) setEndStr(String(Math.min(r.min_start + MAX_WINDOW_BP, r.max_end)))
       return
     }
     setRangeError(null)
-    setRangeBounds(null)
+    setRangeBounds(local ? { min_start: local.min_start, max_end: local.max_end } : null)
     try {
       const r = await epcotSupportedRange(chrom)
       setRangeBounds({ min_start: r.min_start, max_end: r.max_end })
       setStartStr(String(r.min_start))
       setEndStr(String(Math.min(r.min_start + MAX_WINDOW_BP, r.max_end)))
     } catch (e) {
-      setRangeError(
-        showTech
-          ? e instanceof EpcotHttpError
-            ? e.message
-            : String(e)
-          : 'This chromosome is not available for analysis. Try another chromosome.',
-      )
+      if (local) {
+        // Use generated local range map when live lookup is unavailable.
+        setRangeBounds({ min_start: local.min_start, max_end: local.max_end })
+        if (!startStr) setStartStr(String(local.min_start))
+        if (!endStr) setEndStr(String(Math.min(local.min_start + MAX_WINDOW_BP, local.max_end)))
+      } else {
+        setRangeError(
+          showTech
+            ? e instanceof EpcotHttpError
+              ? e.message
+              : String(e)
+            : 'This chromosome is not available for analysis. Try another chromosome.',
+        )
+      }
     }
   }, [chrom, showTech, testingMode, startStr, endStr])
 

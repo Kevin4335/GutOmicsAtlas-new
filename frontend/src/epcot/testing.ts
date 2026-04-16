@@ -1,4 +1,6 @@
 import type { PredictResponse, UploadBamResponse } from './types'
+import { EPCOT_MODALITIES } from './modalities'
+import { getSupportedRange } from './supported_ranges'
 
 const MOCK_UPLOAD_DELAY_MS = 5000
 const MOCK_PREDICT_DELAY_MS = 1200
@@ -44,10 +46,12 @@ export async function mockPredict(opts: {
 }
 
 export function mockModalities(): string[] {
-  return ['rna', 'atac', 'hic', 'epi']
+  return [...EPCOT_MODALITIES]
 }
 
-export function mockSupportedRange(): { min_start: number; max_end: number } {
+export function mockSupportedRange(chrom: string): { min_start: number; max_end: number } {
+  const r = getSupportedRange(chrom)
+  if (r) return { min_start: r.min_start, max_end: r.max_end }
   return { min_start: 1, max_end: 250_000_000 }
 }
 
