@@ -2,14 +2,17 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
+  Button,
   IconButton,
   InputBase,
   Stack,
   Typography,
 } from "@mui/material";
 import ArrowOutwardOutlinedIcon from "@mui/icons-material/ArrowOutwardOutlined";
+import ModelTrainingOutlinedIcon from "@mui/icons-material/ModelTrainingOutlined";
 import NavBar from "../components/NavBar";
 import { ChatOptionsButton } from "../components/ChatOptionsButton";
+import EpcotAgentDialog from "../components/EpcotAgentDialog";
 import mainBackground from "../assets/main_background.svg";
 
 // Example prompts
@@ -22,6 +25,7 @@ const examplePrompts = [
 export default function AILanding() {
   const navigate = useNavigate();
   const [inputValue, setInputValue] = useState("");
+  const [epcotOpen, setEpcotOpen] = useState(false);
 
   const handleSubmit = (prompt?: string) => {
     const query = prompt || inputValue.trim();
@@ -141,10 +145,10 @@ export default function AILanding() {
           </Box>
         </Box>
 
-        {/* "For example:" section - 59% of screen width */}
+        {/* Examples + EPCOT — wider strip for cards and EPCOT Agent */}
         <Box
           sx={{
-            width: "59%",
+            width: "min(920px, 92vw)",
           }}
         >
           <Typography
@@ -204,8 +208,57 @@ export default function AILanding() {
               </Box>
             ))}
           </Stack>
+
+          <Typography
+            sx={{
+              color: "#000000",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              mt: 4,
+              mb: 0.8,
+            }}
+          >
+            Additional Features:
+          </Typography>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            onClick={() => setEpcotOpen(true)}
+            sx={{
+              py: 2,
+              px: 2.5,
+              borderRadius: "10px",
+              borderColor: "rgba(0,0,0,0.18)",
+              color: "#1a1a1a",
+              textTransform: "none",
+              justifyContent: "flex-start",
+              gap: 1.5,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.06)",
+              "&:hover": {
+                borderColor: "var(--accent)",
+                backgroundColor: "rgba(222, 51, 65, 0.04)",
+              },
+            }}
+          >
+            <ModelTrainingOutlinedIcon sx={{ color: "var(--accent)", fontSize: 28, flexShrink: 0 }} />
+            <Box sx={{ textAlign: "left" }}>
+              <Typography component="span" sx={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "0.04em" }}>
+                EPCOT
+              </Typography>
+              <Typography component="span" sx={{ fontWeight: 600, fontSize: "0.95rem" }}>
+                {" "}
+                Agent
+              </Typography>
+              <Typography variant="caption" sx={{ display: "block", color: "#5c5c5c", mt: 0.35, fontWeight: 400 }}>
+                Chromatin-focused analysis on your region — optional BAM, then save outputs
+              </Typography>
+            </Box>
+          </Button>
         </Box>
       </Box>
+
+      <EpcotAgentDialog open={epcotOpen} onClose={() => setEpcotOpen(false)} />
 
       {/* Simplified footer */}
       <Box
