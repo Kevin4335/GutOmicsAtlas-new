@@ -10,9 +10,4 @@ __pycache__/
 id_rsa
 config.py
 
-BACKEND_API.md
-PIPELINE_EXAMPLE.md
-BACKEND_instructions.md
-EPCOT_Agent.pdf
-EPCOT_Agent_Greatlakes.pdf
-FRONTEND_instructions.md
+instructions/

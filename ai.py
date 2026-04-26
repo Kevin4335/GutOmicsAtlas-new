@@ -45,6 +45,7 @@ PLOT_BACKEND_BASE = os.environ.get("PLOT_BACKEND_BASE", "http://localhost")
 # Python/nginx public origin for /data/st and /data/sm static figures (not R ports).
 GUT_PUBLIC_DATA_BASE = os.environ.get("GUT_PUBLIC_DATA_BASE", "http://localhost")
 GLKB_LLM_AGENT_URL = os.environ.get("GLKB_LLM_AGENT_URL", "https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent")
+C2S_AGENT_BASE = os.environ.get("C2S_AGENT_BASE", "https://jieliulab3.dcmb.med.umich.edu/c2s-agent")
 
 # ---------------------------------------------------------------------------
 # Tool definitions for Claude native tool use
@@ -149,6 +150,23 @@ TOOLS = [
         },
     },
     {
+        "name": "cell2sentence_ai_assistant",
+        "description": (
+            "Cell2Sentence (C2S) cell-centric assistant. Stateless one-shot call to C2S backend. "
+            "Pass a single standalone question string in `message`."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Standalone cell-biology question for Cell2Sentence.",
+                },
+            },
+            "required": ["message"],
+        },
+    },
+    {
         "name": "glkb_ai_assistant",
         "description": (
             "GLKB (literature KB) Q&A. Pass a single self-contained question string. "
@@ -211,6 +229,7 @@ PLANNER_TOOL = [
                                     "spatial_transcriptomics",
                                     "spatial_metabolomics",
                                     "static_images",
+                                    "cell2sentence_ai_assistant",
                                     "glkb_ai_assistant",
                                 ],
                                 "description": "Name of the tool to call.",
@@ -230,12 +249,14 @@ PLANNER_TOOL = [
 ]
 
 
-def _planner_tool_for_session(glkb_enabled: bool) -> list:
-    """Planner create_plan schema: drop glkb_ai_assistant from enum when user disabled GLKB."""
+def _planner_tool_for_session(glkb_enabled: bool, c2s_enabled: bool) -> list:
+    """Planner create_plan schema: drop disabled assistant tools from enum."""
     tools = deepcopy(PLANNER_TOOL)
     enum_key = tools[0]["input_schema"]["properties"]["steps"]["items"]["properties"]["tool"]
     if not glkb_enabled:
         enum_key["enum"] = [x for x in enum_key["enum"] if x != "glkb_ai_assistant"]
+    if not c2s_enabled:
+        enum_key["enum"] = [x for x in enum_key["enum"] if x != "cell2sentence_ai_assistant"]
     return tools
 
 
@@ -275,6 +296,11 @@ Parameters:
       "scRNA_Epithelial", "scRNA_Enteroendocrine", "snATAC_all", "snATAC_Epithelial",
       "st_umap_dot", "st_duodenum_colon"
 
+### cell2sentence_ai_assistant
+Cell2Sentence (C2S) cell-focused assistant. **C2S receives `message` only — no chat history.**
+Parameters:
+  - message: string — standalone cell-biology question.
+
 ### glkb_ai_assistant
 GLKB answers from biomedical literature. **GLKB only receives `question` — no chat history.**
 
@@ -310,8 +336,12 @@ GLKB frequently refuses or fails on questions that are too general, chatty, or p
 - **Always** pass a reformulated `question` when the user's wording is too broad or non-scientific for a search backend.
 - Do NOT call for pure UI help ("what tabs exist?") unless they need literature.
 
+**cell2sentence_ai_assistant:**
+- Call for cell-type/state interpretation requests where Cell2Sentence should provide an additional cell-centric narrative.
+- Pass a standalone `message`; reformulate terse prompts into a clear question when needed.
+
 **Combining tools:**
-- Often combine glkb_ai_assistant with scRNA/snATAC/spatial tools when the user wants both explanation and a figure.
+- Often combine glkb_ai_assistant and/or cell2sentence_ai_assistant with scRNA/snATAC/spatial tools when the user wants both explanation and a figure.
 
 **steps: [] (no tools):**
 - Greetings, thanks, pure navigation help, or when no figure/GLKB call is appropriate.
@@ -368,13 +398,14 @@ When the user asks to visualize or show data, the planner has already run the to
 - spatial_transcriptomics: ST figures for genes in the site list.
 - spatial_metabolomics: metabolite slide images (exact metabolite names).
 - static_images: pre-made overview PNGs for each major page.
+- cell2sentence_ai_assistant: Cell2Sentence answers (you will see returned text in tool results). Use this for cell-focused narrative context.
 - glkb_ai_assistant: GLKB answers (you will see the returned text in tool results). The planner may have asked GLKB a **reformulated** literature question; answer the **user's** original question clearly, using GLKB text as evidence.
 
 After image tool results, briefly interpret what the figure shows (expression pattern, accessibility, spatial layout) in gut-relevant terms.
 
 ## 3. How to Answer Biology Questions
 
-1. Combine GLKB or general knowledge with what GutOmicsAtlas visualizations show when both exist.
+1. Combine GLKB, Cell2Sentence, or general knowledge with what GutOmicsAtlas visualizations show when both exist.
 2. Use phrasing like "In this atlas...", "On the scRNA/snATAC/spatial views...", tying claims to the tools the user asked for.
 3. If fetal vs adult or epithelial vs EEC was not specified and the question requires it, ask the user to choose.
 
@@ -749,6 +780,26 @@ def execute_tool(
                 {"type": "text", "content": f"Static image {image_name} not found on server."},
             )
 
+    if name == "cell2sentence_ai_assistant":
+        c2s_on = opts.get("c2s", True) is not False
+        if not c2s_on:
+            msg = "Cell2Sentence is turned off in chat options. Enable it under the + menu to use the cell assistant."
+            return (msg, {"type": "text", "content": msg})
+        message = (tool_input.get("message") or "").strip()
+        if not message:
+            msg = "Cell2Sentence tool was called with an empty message."
+            return (msg, {"type": "text", "content": msg})
+        success, answer = c2s_chat(message)
+        if not success:
+            return (
+                f"Cell2Sentence call failed. Error: {answer}",
+                {"type": "text", "content": f"Cell2Sentence call failed.\n\nError:\n{answer}"},
+            )
+        return (
+            f"Cell2Sentence answer: {answer}",
+            {"type": "text", "content": f"Ask Cell2Sentence: {message}\n\nAnswer:\n\n{answer}"},
+        )
+
     if name == "glkb_ai_assistant":
         if not glkb_on:
             msg = "GLKB is turned off in chat options. Enable it under the + menu to use the literature assistant."
@@ -823,32 +874,34 @@ def get_gpt_resp(
     Fallback: if the planner outputs steps=[], Phase 2 is skipped and Phase 3
         is a direct text-only call (no tools), e.g. for pure biology questions.
 
-    agent_options: e.g. {"glkb": False} to forbid GLKB tool use (frontend + menu).
+    agent_options: e.g. {"glkb": False, "c2s": False} to forbid assistant tools from frontend + menu.
 
     Returns: (success, error_msg, frontend_messages)
     """
     try:
-        opts: Dict[str, Any] = {"glkb": True}
+        opts: Dict[str, Any] = {"glkb": True, "c2s": True}
         if isinstance(agent_options, dict):
             opts["glkb"] = agent_options.get("glkb", True) is not False
+            opts["c2s"] = agent_options.get("c2s", True) is not False
         glkb_on = bool(opts["glkb"])
+        c2s_on = bool(opts["c2s"])
 
         user_q = _latest_user_text(history)
         MAX_QUERY_CHARS = 1200
         user_q = user_q[:MAX_QUERY_CHARS]
 
         # Paper RAG disabled for GutOmicsAtlas (paper_search is a stub returning []).
-        if glkb_on:
+        if glkb_on or c2s_on:
             paper_section = (
                 "## 4. Context note (no project paper RAG)\n"
                 "This deployment does not attach indexed paper excerpts. "
-                "Use GLKB tool results when present, visualization tool results, and general reasoning.\n"
+                "Use GLKB and/or Cell2Sentence tool results when present, visualization tool results, and general reasoning.\n"
             )
         else:
             paper_section = (
                 "## 4. Context note\n"
-                "The user disabled GLKB (literature assistant) for this message. "
-                "Do not state that GLKB was consulted. Rely on visualization tools and general reasoning only.\n"
+                "The user disabled GLKB and Cell2Sentence for this message. "
+                "Do not state those assistants were consulted. Rely on visualization tools and general reasoning only.\n"
             )
 
         anthropic_msgs = _flat_to_anthropic(history)
@@ -872,8 +925,14 @@ def get_gpt_resp(
                 "You MUST NOT include glkb_ai_assistant in create_plan steps. "
                 "Use only visualization/static tools, or an empty steps list.\n"
             )
+        if not c2s_on:
+            planner_system += (
+                "\n\n## CRITICAL: Cell2Sentence disabled by user\n"
+                "The user turned OFF Cell2Sentence for this request. "
+                "You MUST NOT include cell2sentence_ai_assistant in create_plan steps.\n"
+            )
 
-        planner_tools = _planner_tool_for_session(glkb_on)
+        planner_tools = _planner_tool_for_session(glkb_on, c2s_on)
 
         planner_resp = client.messages.create(
             model=anthropic_model,
@@ -897,6 +956,8 @@ def get_gpt_resp(
 
         if not glkb_on:
             steps = [s for s in steps if isinstance(s, dict) and s.get("tool") != "glkb_ai_assistant"]
+        if not c2s_on:
+            steps = [s for s in steps if isinstance(s, dict) and s.get("tool") != "cell2sentence_ai_assistant"]
 
         print(f"======== Planner: {len(steps)} step(s): {[s['tool'] for s in steps]}")
         log_queue.put(json.dumps({"planner": plan_input}, ensure_ascii=False))
@@ -936,6 +997,10 @@ def get_gpt_resp(
         if not glkb_on:
             synthesizer_system += (
                 "\nThe user disabled GLKB for this turn; do not imply a literature lookup was performed.\n"
+            )
+        if not c2s_on:
+            synthesizer_system += (
+                "\nThe user disabled Cell2Sentence for this turn; do not imply Cell2Sentence was used.\n"
             )
 
         # Build the synthesizer message history.
@@ -1170,6 +1235,48 @@ def glkb_chat(question: str) -> Tuple[bool, str]:
     return False, last_err or "Unknown error"
 
 
+def c2s_chat(message: str) -> Tuple[bool, str]:
+    """Call Cell2Sentence backend: POST /chat with {"message": "..."}."""
+    base = (C2S_AGENT_BASE or "").strip().rstrip("/")
+    if not base:
+        return False, "C2S is not configured (set C2S_AGENT_BASE)."
+
+    payload = {"message": message}
+    url = f"{base}/chat"
+    try:
+        r = requests.post(
+            url,
+            json=payload,
+            timeout=(10, 240),
+            verify=False,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "c2s-python-client/1.0",
+            },
+        )
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        return False, f"Network/timeout calling C2S: {e}"
+    except requests.exceptions.RequestException as e:
+        return False, f"HTTP/network error: {e}"
+
+    try:
+        data = r.json()
+    except json.JSONDecodeError:
+        return False, f"Invalid JSON (HTTP {r.status_code}): {(r.text or '')[:800]}"
+
+    if r.status_code < 200 or r.status_code >= 300:
+        err = data.get("error") if isinstance(data, dict) else None
+        detail = data.get("detail") if isinstance(data, dict) else None
+        body = err or detail or (r.text or "")[:800]
+        return False, f"HTTP {r.status_code}. {body}"
+
+    if isinstance(data, dict):
+        resp = data.get("response")
+        if isinstance(resp, str) and resp.strip():
+            return True, resp.strip()
+    return False, "C2S returned no response text."
+
+
 # ---------------------------------------------------------------------------
 # HTTP handler  (API contract unchanged)
 # ---------------------------------------------------------------------------
@@ -1187,7 +1294,7 @@ def process_ai_chat(request, path: str):
         return
 
     user_input = request.rfile.read(cl).decode("utf-8", errors="replace")
-    agent_options: Dict[str, Any] = {"glkb": True}
+    agent_options: Dict[str, Any] = {"glkb": True, "c2s": True}
 
     try:
         payload = json.loads(user_input)
@@ -1209,8 +1316,9 @@ def process_ai_chat(request, path: str):
         o = payload.get("options")
         if isinstance(o, dict):
             agent_options["glkb"] = o.get("glkb", True) is not False
+            agent_options["c2s"] = o.get("c2s", True) is not False
     else:
-        bad = b'Expected a JSON array of messages or {"history":[...],"options":{"glkb":true}}'
+        bad = b'Expected a JSON array of messages or {"history":[...],"options":{"glkb":true,"c2s":true}}'
         request.send_response(400)
         request.send_header("Connection", "keep-alive")
         request.send_header("Content-Length", len(bad))
