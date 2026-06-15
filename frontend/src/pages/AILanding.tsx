@@ -2,30 +2,34 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
-  Button,
+  // Button,
   IconButton,
   InputBase,
   Stack,
   Typography,
 } from "@mui/material";
 import ArrowOutwardOutlinedIcon from "@mui/icons-material/ArrowOutwardOutlined";
-import ModelTrainingOutlinedIcon from "@mui/icons-material/ModelTrainingOutlined";
+// import ModelTrainingOutlinedIcon from "@mui/icons-material/ModelTrainingOutlined";
 import NavBar from "../components/NavBar";
 import { ChatOptionsButton } from "../components/ChatOptionsButton";
-import EpcotAgentDialog from "../components/EpcotAgentDialog";
+// Temporarily hidden — re-enable when EPCOT Agent returns to the landing page.
+// import EpcotAgentDialog from "../components/EpcotAgentDialog";
 import mainBackground from "../assets/main_background.svg";
 
 // Example prompts
 const examplePrompts = [
-  "Can you show the expression of CHGA?",
-  "What is the role of BRCA1 in breast cancer?",
-  "How many articles about Alzheimer's disease are published in 2020?",
+  "Can you show the expression of CLCA1?",
+  "What is the role of enteroendocrine cells in homeostasis and nutrition?",
+  "How many articles about multiomics analysis of fetal and adult gut are published in 2025?",
 ];
 
 export default function AILanding() {
   const navigate = useNavigate();
   const [inputValue, setInputValue] = useState("");
+  // EPCOT wiring kept for easy re-enable; UI is temporarily hidden below.
   const [epcotOpen, setEpcotOpen] = useState(false);
+  void epcotOpen;
+  void setEpcotOpen;
 
   const handleSubmit = (prompt?: string) => {
     const query = prompt || inputValue.trim();
@@ -209,6 +213,7 @@ export default function AILanding() {
             ))}
           </Stack>
 
+          {/* EPCOT Agent — temporarily hidden; restore import, state, and block below to re-enable.
           <Typography
             sx={{
               color: "#000000",
@@ -255,10 +260,11 @@ export default function AILanding() {
               </Typography>
             </Box>
           </Button>
+          */}
         </Box>
       </Box>
 
-      <EpcotAgentDialog open={epcotOpen} onClose={() => setEpcotOpen(false)} />
+      {/* <EpcotAgentDialog open={epcotOpen} onClose={() => setEpcotOpen(false)} /> */}
 
       {/* Simplified footer */}
       <Box

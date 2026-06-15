@@ -290,17 +290,9 @@ export default function AIChat() {
       title: "Website Q&A",
       emoji: "🧬",
       questions: [
-        "What is ACSL5?",
+        "Can you show the expression of CLCA1?",
         "Please tell me the role of LGR5 in intestinal stem cells.",
-        "Can you show the expression of CHGA?",
-      ],
-    },
-    {
-      key: "spatial",
-      title: "Metabolomics",
-      emoji: "🧭",
-      questions: [
-        "Please show me the differential metabolite expression of GABA in duodenum versus colon tissues.",
+        "Spatial TX for REG4",
       ],
     },
     {
@@ -308,8 +300,8 @@ export default function AIChat() {
       title: "GLKB (Literature)",
       emoji: "💡",
       questions: [
-        "GLKB: What is the role of BRCA1 in breast cancer?",
-        "GLKB: How many articles about Alzheimer's disease are published in 2020?",
+        "What is the role of enteroendocrine cells in homeostasis and nutrition?",
+        "How many articles about multiomics analysis of fetal and adult gut are published in 2025?",
       ],
     },
   ] as const;

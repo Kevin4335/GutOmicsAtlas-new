@@ -43,10 +43,41 @@ function joinUrl(base: string, path: string): string {
   return `${base}${p}`
 }
 
+/** Console preview for EPCOT POST bodies (no large binary dumps). */
+function epcotPostBodyForConsole(body: BodyInit | null | undefined): unknown {
+  if (body == null) return null
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body) as unknown
+    } catch {
+      return body
+    }
+  }
+  if (body instanceof FormData) {
+    const out: Record<string, string> = {}
+    for (const [k, v] of body.entries()) {
+      out[k] = v instanceof File ? `File(${v.name}, ${v.size} bytes)` : String(v)
+    }
+    return out
+  }
+  if (body instanceof URLSearchParams) {
+    return Object.fromEntries(body.entries())
+  }
+  return `[${body.constructor?.name ?? 'BodyInit'}]`
+}
+
+function logEpcotPost(url: string, init: RequestInit): void {
+  const method = (init.method ?? 'GET').toUpperCase()
+  if (method !== 'POST') return
+  // eslint-disable-next-line no-console -- intentional EPCOT request tracing
+  console.log('[EPCOT] POST', url, epcotPostBodyForConsole(init.body as BodyInit | null | undefined))
+}
+
 export async function epcotFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const base = getEpcotApiBase()
   const url = joinUrl(base, path)
   const headers = new Headers(init.headers)
+  logEpcotPost(url, init)
   const r = await fetch(url, { ...init, headers })
   return r
 }

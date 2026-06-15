@@ -30,13 +30,13 @@ const HOME_STYLE_TAG = `
 `
 
 const STATS = [
-  { label: 'Omics Modalities', hint: 'scRNA · snATAC · Spatial', value: '4' },
+  { label: 'Omics Modalities', hint: 'scRNA · snATAC · Spatial TX', value: '3' },
   { label: 'Spatial Genes', hint: 'transcriptomics panel', value: '422' },
-  { label: 'Tissue Regions', hint: 'Duodenum · Colon', value: '2' },
+  { label: 'Tissue Regions', hint: 'Foregut · Midgut · Hindgut · Colon', value: '4' },
   {
     label: 'Development Stages',
-    hint: 'Fetal 17wk · 20wk · Adult',
-    value: '3',
+    hint: 'Fetal · Adult',
+    value: '2',
   },
 ] as const
 
@@ -46,7 +46,8 @@ const MODULES = [
     index: 'MODULE 01',
     title: 'scRNA-seq',
     desc: 'Single-cell RNA sequencing of fetal and adult gut epithelial and enteroendocrine cells with UMAP, dot plots, and region comparison.',
-    pill: 'Fetal + Adult',
+    stage: 'Fetal + Adult',
+    cellType: 'All epithelial cells and enteroendocrine cells',
     borderColor: 'var(--green)',
     pillBg: 'var(--green-light)',
     titleColor: 'var(--green)',
@@ -56,27 +57,19 @@ const MODULES = [
     index: 'MODULE 02',
     title: 'snATAC-seq',
     desc: 'Single-nucleus ATAC sequencing profiling chromatin accessibility with IGV-style coverage plots across all gut cell types.',
-    pill: 'All cell types',
+    stage: 'Fetal',
+    cellType: 'All cell types and epithelial cells',
     borderColor: 'var(--teal)',
     pillBg: 'var(--teal-light)',
     titleColor: 'var(--teal)',
   },
   {
-    id: 'spatial-metabolomics',
-    index: 'MODULE 03',
-    title: 'Spatial Metabolomics',
-    desc: 'MALDI imaging of metabolite levels comparing fetal duodenum and colon with interactive heatmap and spatial distribution maps.',
-    pill: 'Duodenum · Colon',
-    borderColor: 'var(--amber)',
-    pillBg: 'var(--amber-light)',
-    titleColor: 'var(--amber)',
-  },
-  {
     id: 'spatial-transcriptomics',
-    index: 'MODULE 04',
+    index: 'MODULE 03',
     title: 'Spatial Transcriptomics',
-    desc: 'Spatial gene expression across 422 genes in 17 and 20-week fetal gut sections, with cell type reference maps.',
-    pill: '422 genes',
+    desc: 'Spatial gene expression across 422 genes in 18 and 20-week fetal gut sections, with cell type reference maps.',
+    stage: 'Fetal',
+    cellType: 'Epithelial cells',
     borderColor: 'var(--purple)',
     pillBg: 'var(--purple-light)',
     titleColor: 'var(--purple)',
@@ -97,12 +90,12 @@ const FEATURES = [
   {
     icon: '🗺️',
     title: 'Spatial Data Visualization',
-    desc: 'Query 422 genes or browse MALDI metabolomics data to see spatial expression and metabolite distribution across gut tissue sections.',
+    desc: 'Query 422 genes to see spatial expression across gut tissue sections.',
   },
   {
     icon: '📊',
     title: 'Differential Expression',
-    desc: 'MA plots and violin plots comparing gene expression between duodenum and colon, and across developmental stages from fetal to adult.',
+    desc: 'MA plots and violin plots comparing gene expression between 1. small intestine and large intestine, 2. goblet cells versus other epithelial cells, across different developmental stages from fetal samples to adult samples.',
   },
 ] as const
 
@@ -244,8 +237,8 @@ export default function Home() {
               }}
             >
               An AI-powered platform for exploring multi-omics data from human gut tissues.
-              Integrates scRNA-seq, snATAC-seq, spatial metabolomics, and spatial transcriptomics
-              from fetal and adult gut samples.
+              Integrates scRNA-seq, snATAC-seq, and spatial transcriptomics from fetal and adult
+              gut samples.
             </p>
             <div
               style={{
@@ -498,29 +491,41 @@ export default function Home() {
                 >
                   {m.desc}
                 </div>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: 100,
-                    background: m.pillBg,
-                    color: m.titleColor,
-                  }}
-                >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <span
                     style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      background: 'currentColor',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: 100,
+                      background: m.pillBg,
+                      color: m.titleColor,
+                      alignSelf: 'flex-start',
                     }}
-                  />
-                  {m.pill}
-                </span>
+                  >
+                    <span
+                      style={{
+                        width: 5,
+                        height: 5,
+                        borderRadius: '50%',
+                        background: 'currentColor',
+                      }}
+                    />
+                    Developmental Stage: {m.stage}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--muted)',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Cell type: {m.cellType}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -636,9 +641,8 @@ export default function Home() {
                 lineHeight: 1.5,
               }}
             >
-              GutOmicsAtlas · scRNA-seq · snATAC-seq · Spatial Metabolomics · Spatial
-              Transcriptomics · Human Gut · Fetal & Adult · Chen Laboratory · Weill Cornell
-              Medicine
+              GutOmicsAtlas · scRNA-seq · snATAC-seq · Spatial Transcriptomics · Human Gut ·
+              Fetal & Adult · Chen Laboratory · Weill Cornell Medicine
             </span>
           </div>
         </div>

@@ -112,20 +112,6 @@ TOOLS = [
         },
     },
     {
-        "name": "spatial_metabolomics",
-        "description": (
-            "Spatial metabolomics slide image. "
-            "name must match the Spatial Metabolomics metabolite list exactly (case sensitive)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Exact metabolite name from the website."},
-            },
-            "required": ["name"],
-        },
-    },
-    {
         "name": "static_images",
         "description": (
             "Default overview PNGs under imgs/ai/ on the server. name is case sensitive."
@@ -227,7 +213,6 @@ PLANNER_TOOL = [
                                     "scRNA",
                                     "snATAC",
                                     "spatial_transcriptomics",
-                                    "spatial_metabolomics",
                                     "static_images",
                                     "cell2sentence_ai_assistant",
                                     "glkb_ai_assistant",
@@ -280,14 +265,9 @@ Parameters:
   - cell_type: EXACTLY "all" OR "epithelial"
 
 ### spatial_transcriptomics
-Spatial transcriptomics figure (Duodenum vs Colon) for genes in the ST gene list.
+Spatial transcriptomics figure for genes in the ST gene list.
 Parameters:
   - gene: string — e.g. "EPCAM", "REG4"
-
-### spatial_metabolomics
-Spatial metabolomics slide image; name must match the website metabolite list exactly (case sensitive).
-Parameters:
-  - name: string — exact metabolite name, e.g. "Lactic Acid"
 
 ### static_images
 Bundled overview PNGs. Use for "show overview", "what does the data look like", or dataset intro without a gene.
@@ -329,7 +309,7 @@ GLKB frequently refuses or fails on questions that are too general, chatty, or p
 - Use EXACT enum strings for cell_type, sample_type, static name, etc.
 
 **Visualization tools:**
-- Call when the user asks to visualize, plot, show expression, accessibility, spatial maps, or metabolite slides.
+- Call when the user asks to visualize, plot, show expression, accessibility, or spatial gene expression maps.
 
 **glkb_ai_assistant:**
 - Call for broad biology, pathways, disease mechanisms, or literature context not answered by a plot alone.
@@ -359,9 +339,6 @@ Plan: snATAC(gene="MUC2", cell_type="all")
 User: "Spatial TX for REG4"
 Plan: spatial_transcriptomics(gene="REG4")
 
-User: "Show lactic acid spatial metabolomics"
-Plan: spatial_metabolomics(name="Lactic Acid")
-
 User: "Overview of snATAC epithelial defaults"
 Plan: static_images(name="snATAC_Epithelial")
 
@@ -383,9 +360,9 @@ Do NOT include any explanation in your response — only call create_plan.
 
 PROMPT = """## 1. Introduction and Task
 
-You are the AI assistant of GutOmicsAtlas. The site presents human gut data: scRNA-seq (epithelial and enteroendocrine cells), snATAC-seq (all cells or epithelial), spatial transcriptomics (Duodenum vs Colon), and spatial metabolomics. You chat with users, answer questions, and interpret figures produced by the tools.
+You are the AI assistant of GutOmicsAtlas. The site presents human gut data: scRNA-seq (epithelial and enteroendocrine cells), snATAC-seq (all cells or epithelial), and spatial transcriptomics. You chat with users, answer questions, and interpret figures produced by the tools.
 
-GutOmicsAtlas integrates scRNA-seq, snATAC-seq, spatial transcriptomics, and spatial metabolomics for analyzing molecular patterns in gut tissue across development (fetal vs adult where applicable).
+GutOmicsAtlas integrates scRNA-seq, snATAC-seq, and spatial transcriptomics for analyzing molecular patterns in gut tissue across development (fetal vs adult where applicable).
 
 You can also use the GLKB AI assistant. The Genomic Literature Knowledge Base (GLKB) integrates biomedical terms and relationships from PubMed and curated repositories; use it when users need literature-grounded biology beyond what the plots alone show.
 
@@ -396,7 +373,6 @@ When the user asks to visualize or show data, the planner has already run the to
 - scRNA: gut scRNA coverage plots — requires cell_type (epithelial vs enteroendocrine) and sample_type (fetal vs adult).
 - snATAC: chromatin accessibility — cell_type all vs epithelial.
 - spatial_transcriptomics: ST figures for genes in the site list.
-- spatial_metabolomics: metabolite slide images (exact metabolite names).
 - static_images: pre-made overview PNGs for each major page.
 - cell2sentence_ai_assistant: Cell2Sentence answers (you will see returned text in tool results). Use this for cell-focused narrative context.
 - glkb_ai_assistant: GLKB answers (you will see the returned text in tool results). The planner may have asked GLKB a **reformulated** literature question; answer the **user's** original question clearly, using GLKB text as evidence.
@@ -736,17 +712,8 @@ def execute_tool(
         return tool_result_content, display_msg
 
     if name == "spatial_metabolomics":
-        metabolite = tool_input["name"]
-        try:
-            index = spatial_meta.index(metabolite) + 1
-        except ValueError:
-            msg = f"Metabolite '{metabolite}' not found in the spatial metabolomics list (exact name required)."
-            return (msg, {"type": "text", "content": msg})
-        url = f"{data_base}/data/sm/Slide{index}.png"
-        desc = f"Spatial metabolomics metabolite={metabolite} (slide {index})"
-        png_bytes = _fetch_png_bytes(url)
-        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
-        return tool_result_content, display_msg
+        msg = "Spatial metabolomics is not available on this site."
+        return (msg, {"type": "text", "content": msg})
 
     if name == "static_images":
         image_name = tool_input["name"]

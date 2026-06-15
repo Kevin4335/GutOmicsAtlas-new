@@ -48,6 +48,8 @@ const CHROM_OPTIONS = [
   ...SUPPORTED_RANGE_LIST.map((r) => r.chrom),
 ] as const
 
+const MAX_INTERVAL_BP = 600_000
+
 /** Four researcher-facing steps; step 3 = results. */
 type WizardStep = 0 | 1 | 2 | 3
 
@@ -240,6 +242,7 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
     if (start < lo || start > hi) return false
     if (end < lo || end > hi) return false
     if (end <= start) return false
+    if (end - start > MAX_INTERVAL_BP) return false
     return true
   }, [rangeBounds, startStr, endStr])
 
@@ -253,6 +256,7 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
     if (start < lo || start > hi) return null
     if (end < lo || end > hi) return null
     if (end <= start) return null
+    if (end - start > MAX_INTERVAL_BP) return null
     return { start, end }
   }, [rangeBounds, startStr, endStr])
 
@@ -518,7 +522,7 @@ export default function EpcotAgentDialog({ open, onClose }: Props) {
               {!intervalValid && rangeBounds ? (
                 <Typography variant="caption" color="error">
                   Adjust coordinates so both values are inside the supported chromosome range and the end is after the
-                  start.
+                  start. Interval length must be {MAX_INTERVAL_BP.toLocaleString()} bp or less.
                 </Typography>
               ) : null}
               {clampedInterval && intervalValid ? (

@@ -1,9 +1,8 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import Home from '../pages/Home'
 import PlaceholderPage from '../pages/PlaceholderPage'
 import Scrna from '../pages/Scrna'
 import Snatac from '../pages/Snatac'
-import SpatialMetabolomics from '../pages/SpatialMetabolomics'
 import SpatialTranscriptomics from '../pages/SpatialTranscriptomics'
 import AILanding from '../pages/AILanding'
 import AIChat from '../pages/AIChat'
@@ -20,7 +19,7 @@ export default function AppRoutes() {
       <Route path="/about" element={<About />} />
       <Route path="/scrna" element={<Scrna />} />
       <Route path="/snatac" element={<Snatac />} />
-      <Route path="/spatial-metabolomics" element={<SpatialMetabolomics />} />
+      <Route path="/spatial-metabolomics" element={<Navigate to="/spatial-transcriptomics" replace />} />
       <Route path="/spatial-transcriptomics" element={<SpatialTranscriptomics />} />
       <Route path="*" element={<PlaceholderPage />} />
     </Routes>

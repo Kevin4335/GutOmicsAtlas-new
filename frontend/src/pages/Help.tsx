@@ -51,7 +51,7 @@ const HELP_STYLE_TAG = `
 .help-acc-content p:last-child { margin-bottom: 20px; }
 `
 
-type AccId = 'acc-1' | 'acc-2' | 'acc-3' | 'acc-4' | 'acc-5'
+type AccId = 'acc-1' | 'acc-2' | 'acc-3' | 'acc-4'
 
 const SECTIONS: { id: AccId; title: string; children: ReactNode }[] = [
   {
@@ -60,9 +60,8 @@ const SECTIONS: { id: AccId; title: string; children: ReactNode }[] = [
     children: (
       <>
         <p>
-          The navigation bar is on the top, including the home page, scRNA page, snATAC page, Spatial Metabolomics
-          page, Spatial Transcriptomics page, Help page, and About page. You can click the corresponding link to enter
-          the page you want to visit.
+          The navigation bar is on the top, including the home page, scRNA page, snATAC page, Spatial Transcriptomics
+          page, Help page, and About page. You can click the corresponding link to enter the page you want to visit.
         </p>
         <p>
           <strong>Home page:</strong> The main page of the website, which provides a brief introduction of the website
@@ -78,12 +77,8 @@ const SECTIONS: { id: AccId; title: string; children: ReactNode }[] = [
           types or epithelial cells.
         </p>
         <p>
-          <strong>Spatial Metabolomics page:</strong> This page displays differential detection of metabolite levels in
-          fetal duodenum and colon tissues and allows users to visualize metabolite distribution.
-        </p>
-        <p>
-          <strong>Spatial Transcriptomics page:</strong> This page displays differential distribution of genes in
-          different regions of fetal duodenum and colon tissues (e.g. crypt versus villi).
+          <strong>Spatial Transcriptomics page:</strong> This page displays differential distribution of genes in different
+          regions of fetal small intestine (duodenum, jejunum) and large intestinal tissues (colon).
         </p>
         <p>There are also the Help page and About page to show the tutorials and basic information of this website.</p>
       </>
@@ -101,10 +96,9 @@ const SECTIONS: { id: AccId; title: string; children: ReactNode }[] = [
           entered in the query box to visualize the feature plot and violin plot of a single gene.
         </p>
         <p>
-          <strong>Region comparison:</strong> This page shows the 3D volcano plot of the differential gene expression
-          (DGE) analysis comparing the scRNA-seq data between the duodenum and colon tissues. Moreover, split violin
-          plots are displayed to show the top duodenum and colon specific marker genes. You can also download the DEG
-          list comparing duodenum and colon tissues in fetal and adult samples.
+          <strong>Region comparison:</strong> This page shows the MA plot of the differential gene expression (DGE)
+          analysis comparing the scRNA-seq data between the small intestinal and large intestinal tissues. You can also
+          download the DEG list comparing small intestinal and large intestinal tissues in fetal and adult samples.
         </p>
         <p>
           <strong>Goblet cells:</strong> This page shows the MA plot of the top marker genes enriched in goblet cells
@@ -128,25 +122,14 @@ const SECTIONS: { id: AccId; title: string; children: ReactNode }[] = [
   },
   {
     id: 'acc-4',
-    title: '4. Spatial Metabolomics — MALDI Imaging',
+    title: '4. Spatial Transcriptomics — Spatial Gene Expression',
     children: (
       <p>
-        This page shows the heatmap comparing the Log₂(Fold Change (Duodenum/Colon)) of normalized metabolite levels of
-        metabolites detected via MALDI imaging. You can click on individual metabolites to visualize the metabolite
-        distribution in the fetal duodenum and colon tissues as well as quantification of the normalized metabolite
-        levels in the fetal duodenum and colon tissues.
-      </p>
-    ),
-  },
-  {
-    id: 'acc-5',
-    title: '5. Spatial Transcriptomics — Spatial Gene Expression',
-    children: (
-      <p>
-        This page displays the UMAP clustering of epithelial cell types in 17 and 20 week old fetal duodenum and colon
-        tissues as well as the dot plot of characteristic marker genes used to identify different epithelial cell types.
-        A drop down menu is provided with 422 genes. Individual genes can be clicked to visualize the expression and
-        distribution of these genes across duodenum and colon tissues.
+        This page displays the UMAP clustering of epithelial cell types in 18 and 20 week old fetal small intestinal
+        (duodenum, jejunum) and large intestinal (colon) tissues as well as the dot plot of characteristic marker genes
+        used to identify different epithelial cell types. A drop down menu is provided with 422 genes. Individual genes
+        can be clicked to visualize the expression and distribution of these genes across duodenum, jejunum and colon
+        tissues.
       </p>
     ),
   },

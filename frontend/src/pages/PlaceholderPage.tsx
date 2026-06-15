@@ -14,7 +14,6 @@ function titleFromPath(pathname: string) {
 
 const SECTION_IDS: Record<string, string[]> = {
   '/scrna': ['scrna', 'snatac'],
-  '/spatial-metabolomics': ['metabolomics', 'transcriptomics'],
 }
 
 export default function PlaceholderPage() {

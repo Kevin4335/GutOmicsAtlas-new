@@ -309,10 +309,7 @@ export default function NavBar() {
         />
         <Dropdown
           label="Spatial Modality"
-          items={[
-            { to: '/spatial-metabolomics#metabolomics', label: 'Spatial Metabolomics' },
-            { to: '/spatial-transcriptomics', label: 'Spatial Transcriptomics' },
-          ]}
+          items={[{ to: '/spatial-transcriptomics', label: 'Spatial Transcriptomics' }]}
         />
 
         <div style={navDivider} aria-hidden />
