@@ -23,7 +23,6 @@ import re
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# GutOmicsAtlas: no local paper RAG index (HeartOmicsAtlas paper_rag disabled here).
 def paper_search(*_args, **_kwargs):
     return []
 
