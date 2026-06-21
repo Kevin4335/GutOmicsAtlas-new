@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
-import BiotechOutlinedIcon from "@mui/icons-material/BiotechOutlined";
 import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import {
   IconButton,
@@ -34,14 +33,6 @@ export function ChatOptionsButton({ disabled }: Props) {
   const handleGlkb = useCallback((_: unknown, checked: boolean) => {
     setOpts((prev) => {
       const next = { ...prev, glkb: checked };
-      writeAIChatOptions(next);
-      return next;
-    });
-  }, []);
-
-  const handleC2s = useCallback((_: unknown, checked: boolean) => {
-    setOpts((prev) => {
-      const next = { ...prev, c2s: checked };
       writeAIChatOptions(next);
       return next;
     });
@@ -134,51 +125,6 @@ export function ChatOptionsButton({ disabled }: Props) {
             size="small"
             checked={opts.glkb}
             onChange={handleGlkb}
-            onClick={(e) => e.stopPropagation()}
-            sx={{
-              "& .MuiSwitch-switchBase.Mui-checked": { color: "var(--accent)" },
-              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                backgroundColor: "var(--accent)",
-                opacity: 0.5,
-              },
-            }}
-          />
-        </MenuItem>
-        <MenuItem
-          disableRipple
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          sx={{
-            cursor: "default",
-            alignItems: "center",
-            py: 1.5,
-            px: 2,
-            gap: 1.25,
-            whiteSpace: "normal",
-          }}
-        >
-          <ListItemIcon sx={{ minWidth: 40, alignSelf: "flex-start", mt: 0.25 }}>
-            <BiotechOutlinedIcon sx={{ color: "var(--accent)", fontSize: 26 }} />
-          </ListItemIcon>
-          <ListItemText
-            primary={
-              <Typography component="span" variant="body2" fontWeight={600} color="#1a1a1a">
-                Cell2Sentence
-              </Typography>
-            }
-            secondary={
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-                Use the cell-focused assistant when helpful
-              </Typography>
-            }
-            sx={{ my: 0, flex: 1 }}
-          />
-          <Switch
-            size="small"
-            checked={opts.c2s}
-            onChange={handleC2s}
             onClick={(e) => e.stopPropagation()}
             sx={{
               "& .MuiSwitch-switchBase.Mui-checked": { color: "var(--accent)" },

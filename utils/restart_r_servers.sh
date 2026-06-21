@@ -1,6 +1,5 @@
 #!/bin/bash
-# restart_r_servers.sh
-# Shut down and restart all R servers in screen sessions
+# Restarts the four gut atlas R plot servers in screen sessions (ports 9025–9028).
 
 BASE_DIR="/home/ubuntu/website/webserver/resources"
 

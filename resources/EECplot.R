@@ -1,3 +1,4 @@
+# R httpuv server (port 9028): on-demand scRNA gene plots for gut enteroendocrine (EEC) cells (fetal and adult).
 require(patchwork)
 require(Seurat)
 require(ggplot2)

@@ -1,3 +1,4 @@
+# R httpuv server (port 9026): on-demand snATAC accessibility plots across all gut cell types.
 require(Seurat)
 require(Signac)
 require(ggplot2)

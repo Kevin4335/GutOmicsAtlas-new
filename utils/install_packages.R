@@ -1,3 +1,4 @@
+# Installs R/Bioconductor packages required by the gut atlas plot backends (Seurat, Signac, httpuv, etc.).
 install.packages("BiocManager", repos = "http://cran.rstudio.com/")
 
 # Install Bioconductor dependencies that Signac needs

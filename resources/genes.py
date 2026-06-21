@@ -1,3 +1,4 @@
+# One-off helper: reads genelist.csv and writes gene symbols to genes.txt.
 csv = open('genelist.csv').read()
 csv = csv[:-1]
 

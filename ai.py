@@ -1,3 +1,4 @@
+# GutOmicsAtlas AI chat backend: plans tool calls, runs plots/literature helpers, and synthesizes replies for POST /chat.
 from R_http import *
 from utils import *
 from mySecrets import hexToStr

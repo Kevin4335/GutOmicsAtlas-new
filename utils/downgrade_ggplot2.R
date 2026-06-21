@@ -1,3 +1,4 @@
+# Pins ggplot2 to 3.5.2 when a newer version breaks the plot backends.
 # Install remotes if needed
 if (!require("remotes", quietly = TRUE)) {
   install.packages("remotes", repos = "https://cran.r-project.org")

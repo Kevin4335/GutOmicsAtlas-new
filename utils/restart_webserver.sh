@@ -1,6 +1,5 @@
 #!/bin/bash
-# restart_webserver.sh
-# Shut down and restart the Python webserver in a screen session
+# Rebuilds the frontend and restarts the Python web server (server.py) in a screen session.
 
 BASE_DIR="/home/ubuntu/website/webserver"
 

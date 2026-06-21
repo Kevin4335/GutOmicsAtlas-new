@@ -1,3 +1,4 @@
+# R httpuv server (port 9027): on-demand snATAC accessibility plots for gut epithelial cells.
 require(Seurat)
 require(Signac)
 require(ggplot2)
