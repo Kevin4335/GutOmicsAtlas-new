@@ -433,7 +433,7 @@ export default function SpatialTranscriptomics() {
                 <div className="st-gene-stack">
                   <div className="st-chart-card">
                     <div className="st-chart-card-header">
-                      <div className="st-chart-title">Spatial TX · Gene expression · {selectedGene} · Panel A</div>
+                      <div className="st-chart-title">Spatial TX · Gene expression · {selectedGene} </div>
                       {loadingGene ? (
                         <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Loading…</span>
                       ) : null}

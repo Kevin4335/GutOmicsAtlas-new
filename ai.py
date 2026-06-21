@@ -657,7 +657,6 @@ def execute_tool(
     glkb_on = opts.get("glkb", True) is not False
 
     base = PLOT_BACKEND_BASE.rstrip("/")
-    data_base = GUT_PUBLIC_DATA_BASE.rstrip("/")
 
     if name == "scRNA":
         raw_gene = tool_input["gene"]
@@ -705,10 +704,17 @@ def execute_tool(
             return (msg, {"type": "text", "content": msg})
         gene = st_genes_formatted_to_origin[fg]
         gq = urllib.parse.quote(gene, safe="")
-        url = f"{data_base}/data/st/{gq}.png"
+        display_url = f"/data/st/{gq}.png"
         desc = f"Spatial transcriptomics plot gene={gene}"
-        png_bytes = _fetch_png_bytes(url)
-        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, url)
+        static_path = os.path.normpath(
+            os.path.join(BASE_DIR, "..", "data", "Xenium", "Xenium figures", f"{gene}.png")
+        )
+        try:
+            with open(static_path, "rb") as f:
+                png_bytes = f.read()
+        except OSError:
+            png_bytes = None
+        tool_result_content, display_msg = _image_tool_result(desc, png_bytes, display_url)
         return tool_result_content, display_msg
 
     if name == "spatial_metabolomics":
