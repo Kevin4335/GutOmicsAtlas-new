@@ -161,7 +161,7 @@ export default function Help() {
         <div className="help-inner help-video-block">
           <div className="help-video-wrap">
             <iframe
-              src="https://www.youtube-nocookie.com/embed/F1Tz5PHCGhs"
+              src="https://www.youtube-nocookie.com/embed/8vuvPM5ZQCk"
               allowFullScreen
               title="GutOmicsAtlas Tutorial Video"
             />
