@@ -32,7 +32,7 @@ const HOME_STYLE_TAG = `
 const STATS = [
   { label: 'Omics Modalities', hint: 'scRNA · snATAC · Spatial TX', value: '3' },
   { label: 'Spatial Genes', hint: 'transcriptomics panel', value: '422' },
-  { label: 'Tissue Regions', hint: 'Foregut · Midgut · Hindgut · Colon', value: '4' },
+  { label: 'Tissue Regions', hint: 'Small intestine · Large intestine', value: '2' },
   {
     label: 'Development Stages',
     hint: 'Fetal · Adult',

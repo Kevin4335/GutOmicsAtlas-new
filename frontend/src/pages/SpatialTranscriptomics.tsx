@@ -307,7 +307,7 @@ export default function SpatialTranscriptomics() {
             </div>
             <h2 className="st-pvs-title">Spatial Transcriptomics</h2>
             <p className="st-pvs-desc">
-              Spatial gene expression (Visium) across fetal gut small intestine (duodenum and jejunum) and large
+              Spatial gene expression (Xenium) across fetal gut small intestine (duodenum and jejunum) and large
               intestinal (colon) tissue sections. Use overview and spatial area for static reference maps; search a gene
               under Gene expression to load feature plots from the server.
             </p>
