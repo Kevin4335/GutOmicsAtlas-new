@@ -1,5 +1,5 @@
 /**
- * Regenerates `src/data/stGenes.ts` from the legacy `frontend-old/js/st.js` gene list.
+ * Regenerates `src/data/stGenes.ts` from `data/Xenium/Xenium figures/*.png` basenames.
  * Run from frontend root: npm run extract:st-genes
  */
 import fs from 'fs'
@@ -8,18 +8,19 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.join(__dirname, '..')
-const repoRoot = path.join(frontendRoot, '..')
+const figuresDir = path.join(frontendRoot, '..', '..', 'data', 'Xenium', 'Xenium figures')
 
-const stJsPath = path.join(repoRoot, 'frontend-old/js/st.js')
-const stJs = fs.readFileSync(stJsPath, 'utf8')
-const m = stJs.match(/const GLB_ALL_GENES = (\[[\s\S]*?\])\s/)
-if (!m) throw new Error('GLB_ALL_GENES not found in frontend-old/js/st.js')
+const genes = fs
+  .readdirSync(figuresDir)
+  .filter((name) => name.endsWith('.png'))
+  .map((name) => name.slice(0, -4))
+  .sort()
 
 const out =
-  '/** Spatial transcriptomics gene list (from repo `frontend-old/js/st.js`). Regenerate: `npm run extract:st-genes`. */\n' +
-  `export const ST_ALL_GENES: string[] = ${m[1]}\n`
+  '/** Spatial transcriptomics gene list (from `data/Xenium/Xenium figures/*.png`). Regenerate: `npm run extract:st-genes`. */\n' +
+  `export const ST_ALL_GENES: string[] = ${JSON.stringify(genes)}\n`
 
 const outPath = path.join(frontendRoot, 'src/data/stGenes.ts')
 fs.mkdirSync(path.dirname(outPath), { recursive: true })
 fs.writeFileSync(outPath, out)
-console.log('Wrote', outPath)
+console.log(`Wrote ${outPath} (${genes.length} genes)`)
