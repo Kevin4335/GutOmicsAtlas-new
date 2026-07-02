@@ -368,7 +368,7 @@ You can also use the GLKB AI assistant. The Genomic Literature Knowledge Base (G
 
 ## 2. Tool Usage
 
-When the user asks to visualize or show data, the planner has already run the tools; you receive tool results (including images). Do NOT output raw JSON tool calls in your reply — synthesize natural language.
+When the user asks to visualize or show data, the planner has already run the tools; you receive tool results. Do NOT output raw JSON tool calls in your reply — synthesize natural language.
 
 - scRNA: gut scRNA coverage plots — requires cell_type (epithelial vs enteroendocrine) and sample_type (fetal vs adult).
 - snATAC: chromatin accessibility — cell_type all vs epithelial.
@@ -377,7 +377,17 @@ When the user asks to visualize or show data, the planner has already run the to
 - cell2sentence_ai_assistant: Cell2Sentence answers (you will see returned text in tool results). Use this for cell-focused narrative context.
 - glkb_ai_assistant: GLKB answers (you will see the returned text in tool results). The planner may have asked GLKB a **reformulated** literature question; answer the **user's** original question clearly, using GLKB text as evidence.
 
-After image tool results, briefly interpret what the figure shows (expression pattern, accessibility, spatial layout) in gut-relevant terms.
+### Plot images (scRNA, snATAC, spatial TX, static_images)
+
+Plot tools always send an image URL to the **user's chat UI**, where figures load in the browser (often after a short delay while R backends render scRNA/snATAC plots).
+
+You may receive only **text** in a tool result — no image block — even when the plot succeeded. That is **expected**: pixels are not always attached for you, especially while plots are still generating.
+
+**Do not** tell the user the plot failed, is missing, or could not be loaded when tool results are text-only or say the image was not attached. Assume the figure is loading or already shown below your message.
+
+When you **do** receive an image block, interpret what the figure shows. When you **do not**, answer from the tool parameters (gene, cell type, sample type, etc.) and general atlas biology; use phrasing like "The plot for … is shown below" or "You should see the figure loading in the chat."
+
+After image tool results (with or without pixels), briefly describe what the figure represents in gut-relevant terms when you can infer it from context.
 
 ## 3. How to Answer Biology Questions
 
@@ -631,7 +641,14 @@ def _image_tool_result(description: str, png_bytes: Union[bytes, None], url: str
             },
         ]
     else:
-        tool_result_content = [{"type": "text", "text": f"{description} (image could not be fetched)"}]
+        tool_result_content = [{
+            "type": "text",
+            "text": (
+                f"{description}. Plot requested for the user; the chat UI will load the image "
+                "(scRNA/snATAC may take time while R renders). Image pixels not attached to this "
+                "tool result — this is normal, not an error."
+            ),
+        }]
 
     # Always use the original URL for the frontend — keeps JSON small and imgStatus keys short
     display_msg = {"type": "image", "content": url}
@@ -967,6 +984,16 @@ def get_gpt_resp(
         # Phase 3 — Synthesizer
         # -------------------------------------------------------------------
         synthesizer_system = PROMPT + "\n\n" + paper_section
+        if steps and any(
+            isinstance(s, dict)
+            and s.get("tool") in ("scRNA", "snATAC", "spatial_transcriptomics", "static_images")
+            for s in steps
+        ):
+            synthesizer_system += (
+                "\n\n## Plot tools ran this turn\n"
+                "The user will see plot image(s) in the chat below your reply. "
+                "If your tool results lack image blocks, that is expected — do not report a loading or fetch failure.\n"
+            )
         if not glkb_on:
             synthesizer_system += (
                 "\nThe user disabled GLKB for this turn; do not imply a literature lookup was performed.\n"
