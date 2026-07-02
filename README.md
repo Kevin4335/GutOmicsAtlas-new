@@ -194,7 +194,7 @@ If the user disables GLKB, that tool is removed from the planner enum and blocke
 | `snATAC` | R httpuv | all → **9026**, epithelial → **9027** |
 | `spatial_transcriptomics` | Static PNG | `{GUT_PUBLIC_DATA_BASE}/data/st/{gene}.png` after `st_genes` check |
 | `static_images` | Local PNG | Keys under `imgs/ai/` (e.g. `scRNA_Epithelial`, `st_umap_dot`, `st_duodenum_colon`) |
-| `glkb_ai_assistant` | GLKB HTTP (SSE) | Sends `{ "question": "...", "messages": [] }` to `GLKB_LLM_AGENT_URL`; planner reformulates vague questions |
+| `glkb_ai_assistant` | GLKB HTTP (SSE) | `POST {GLKB_API_BASE}/stream` with `{ "question": "...", "messages": [] }`; planner reformulates vague questions |
 | *(planned)* | — | More chat **+** menu tools and external integrations |
 
 **Spatial metabolomics** is disabled (removed from the planner; direct calls return an unavailable message).

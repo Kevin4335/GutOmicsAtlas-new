@@ -44,7 +44,13 @@ __all__ = ['process_ai_chat']
 PLOT_BACKEND_BASE = os.environ.get("PLOT_BACKEND_BASE", "http://localhost")
 # Python/nginx public origin for /data/st and /data/sm static figures (not R ports).
 GUT_PUBLIC_DATA_BASE = os.environ.get("GUT_PUBLIC_DATA_BASE", "http://localhost")
-GLKB_LLM_AGENT_URL = os.environ.get("GLKB_LLM_AGENT_URL", "https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent")
+# GLKB literature API (POST /stream). Env: GLKB_API_BASE or GLKB_LLM_AGENT_URL (service base URL).
+_default_glkb_base = "https://jieliulab3.dcmb.med.umich.edu/hirn-literature-api"
+GLKB_API_BASE = (
+    os.environ.get("GLKB_API_BASE")
+    or os.environ.get("GLKB_LLM_AGENT_URL")
+    or _default_glkb_base
+).rstrip("/")
 C2S_AGENT_BASE = os.environ.get("C2S_AGENT_BASE", "https://jieliulab3.dcmb.med.umich.edu/c2s-agent")
 
 # ---------------------------------------------------------------------------
@@ -155,8 +161,8 @@ TOOLS = [
     {
         "name": "glkb_ai_assistant",
         "description": (
-            "GLKB (literature KB) Q&A. Pass a single self-contained question string. "
-            "GLKB often returns nothing if the question is too vague or conversational — "
+            "GLKB biomedical literature Q&A. Pass a single self-contained question string. "
+            "Returns poorly if the question is too vague or conversational — "
             "use a concrete, literature-retrieval-style query (see planner instructions), "
             "not necessarily the user's raw wording."
         ),
@@ -1055,38 +1061,70 @@ def get_gpt_resp(
 
 
 # ---------------------------------------------------------------------------
-# GLKB integration  (unchanged)
+# GLKB literature integration
 # ---------------------------------------------------------------------------
+
+def _glkb_base_url() -> str:
+    base = (GLKB_API_BASE or "").strip().rstrip("/")
+    # Legacy GLKB env sometimes pointed at .../llm_agent — normalize to service base.
+    if base.endswith("/llm_agent"):
+        base = base[: -len("/llm_agent")]
+    return base
+
+
+def _format_glkb_references(refs: Any, limit: int = 10) -> str:
+    if not isinstance(refs, list) or not refs:
+        return ""
+    lines: List[str] = []
+    for i, ref in enumerate(refs[:limit], start=1):
+        if not isinstance(ref, dict):
+            continue
+        title = (ref.get("title") or "Untitled").strip()
+        url = (ref.get("url") or "").strip()
+        pmid = ref.get("pmid")
+        if not url and pmid:
+            url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+        year = ref.get("date") or ""
+        journal = (ref.get("journal") or "").strip()
+        authors = ref.get("authors")
+        if isinstance(authors, list):
+            author_str = ", ".join(a for a in authors[:5] if isinstance(a, str) and a.strip())
+            if len(authors) > 5:
+                author_str += " et al."
+        else:
+            author_str = ""
+        meta_parts = [p for p in (author_str, f"({year})" if year else "", journal) if p]
+        meta = " — ".join(meta_parts)
+        lines.append(f"{i}. {title}\n   {meta}\n   {url}")
+    if not lines:
+        return ""
+    return "\n\nReferences:\n" + "\n".join(lines)
+
 
 def glkb_chat(question: str) -> Tuple[bool, str]:
     """
-    Safe-ish GLKB SSE caller.
-    - No history (messages = [])
-    - Handles SSE chunking
-    - Adds basic retries + backoff
-    - Adds caps to avoid runaway memory
-    - Better error messages (HTTP body snippet, content-type, etc.)
+    Call GLKB literature API: POST /stream (SSE).
+    Stateless one-shot: question + empty messages; no session_id.
     """
-    URL = GLKB_LLM_AGENT_URL
-    PREFIX = "[AGENT OUTPUT] FinalAnswerAgent | Output:"
+    base = _glkb_base_url()
+    if not base:
+        return False, "GLKB is not configured (set GLKB_API_BASE)."
+
+    url = f"{base}/stream"
+    payload = {"question": question, "messages": [], "max_articles": 10}
 
     CONNECT_TIMEOUT_S = 10
-    READ_TIMEOUT_S = 180
+    READ_TIMEOUT_S = 240
     MAX_ATTEMPTS = 3
     BACKOFF_S = 1.5
 
-    MAX_CHUNKS = 1000
-    MAX_TOTAL_CHARS = 2_000_000
-
-    payload = {"question": question, "messages": []}
-
-    last_err = None
+    last_err: Union[str, None] = None
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             with requests.Session() as session:
                 with session.post(
-                    URL,
+                    url,
                     json=payload,
                     stream=True,
                     timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
@@ -1094,7 +1132,7 @@ def glkb_chat(question: str) -> Tuple[bool, str]:
                     headers={
                         "Accept": "text/event-stream",
                         "Content-Type": "application/json",
-                        "User-Agent": "glkb-python-client/1.0",
+                        "User-Agent": "gutomics-glkb/1.0",
                     },
                 ) as r:
                     if r.status_code < 200 or r.status_code >= 300:
@@ -1110,7 +1148,7 @@ def glkb_chat(question: str) -> Tuple[bool, str]:
                         )
 
                     ct = (r.headers.get("content-type") or "").lower()
-                    if "text/event-stream" not in ct:
+                    if "text/event-stream" not in ct and "application/json" not in ct:
                         body_snip = ""
                         try:
                             body_snip = (r.text or "")[:800]
@@ -1118,104 +1156,43 @@ def glkb_chat(question: str) -> Tuple[bool, str]:
                             body_snip = "<unable to read body>"
                         return (
                             False,
-                            f"Expected SSE (text/event-stream) but got Content-Type: {ct}. Body (first 800 chars): {body_snip}",
+                            f"Expected SSE (text/event-stream) but got Content-Type: {ct}. "
+                            f"Body (first 800 chars): {body_snip}",
                         )
-
-                    chunks: List[str] = []
-                    total_chars = 0
 
                     for raw_line in r.iter_lines(decode_unicode=True):
                         if raw_line is None:
                             continue
-
                         line = raw_line.strip()
-                        if not line:
+                        if not line or line.startswith(":"):
                             continue
                         if not line.startswith("data:"):
                             continue
 
                         data_str = line[len("data:"):].strip()
-                        if not data_str:
+                        if not data_str or data_str == "[DONE]":
                             continue
-                        if data_str == "[DONE]":
-                            break
 
                         try:
                             obj = json.loads(data_str)
-                            step = obj.get("step")
-
-                            if step == "Complete":
-                                final_resp = obj.get("response")
-                                final_text = ""
-
-                                if isinstance(final_resp, str) and final_resp.strip():
-                                    final_text = final_resp.strip()
-
-                                refs = obj.get("references")
-                                if isinstance(refs, list) and refs:
-                                    ref_lines = []
-                                    for i, r in enumerate(refs[:10], start=1):
-                                        if not isinstance(r, list) or len(r) < 6:
-                                            continue
-
-                                        title = r[0] or "Untitled"
-                                        url = r[1] or ""
-                                        year = r[3] or ""
-                                        journal = r[4] or ""
-                                        authors = r[5] or []
-
-                                        if isinstance(authors, list):
-                                            authors = [a for a in authors if a.strip()]
-                                            author_str = ", ".join(authors[:5])
-                                            if len(authors) > 5:
-                                                author_str += " et al."
-                                        else:
-                                            author_str = ""
-
-                                        line = f"{i}. {title}\n   {author_str} ({year}) — {journal}\n   {url}"
-                                        ref_lines.append(line)
-
-                                    if ref_lines:
-                                        final_text += "\n\nReferences:\n" + "\n".join(ref_lines)
-
-                                return True, final_text.strip()
-
                         except json.JSONDecodeError:
                             continue
 
-                        content = obj.get("content")
-                        if not isinstance(content, str) or not content:
+                        if obj.get("step") != "Complete":
                             continue
 
-                        idx = content.find(PREFIX)
-                        if idx == -1:
-                            continue
+                        final_text = ""
+                        resp = obj.get("response")
+                        if isinstance(resp, str) and resp.strip():
+                            final_text = resp.strip()
+                        ref_block = _format_glkb_references(obj.get("references"))
+                        if ref_block:
+                            final_text = (final_text + ref_block).strip()
+                        if final_text:
+                            return True, final_text
+                        return False, "GLKB returned Complete with no response text."
 
-                        piece = content[idx + len(PREFIX):].lstrip()
-                        if not piece:
-                            continue
-
-                        if len(chunks) >= MAX_CHUNKS:
-                            break
-                        if total_chars + len(piece) > MAX_TOTAL_CHARS:
-                            remaining = MAX_TOTAL_CHARS - total_chars
-                            if remaining > 0:
-                                chunks.append(piece[:remaining])
-                                total_chars += remaining
-                            break
-
-                        chunks.append(piece)
-                        total_chars += len(piece)
-
-                    if not chunks:
-                        return (
-                            False,
-                            "No FinalAnswerAgent output found in SSE stream. "
-                            "The agent may have failed, returned only traces, or the prefix format changed.",
-                        )
-
-                    result = "\n".join(chunks).strip()
-                    return True, result
+                    return False, "No Complete event in GLKB SSE stream."
 
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             last_err = f"{type(e).__name__}: {e}"
