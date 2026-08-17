@@ -11,7 +11,7 @@ type CellType = 'epithelial' | 'enteroendocrine'
 type Stage = 'fetal' | 'adult'
 type ScrnaTab = 'overview' | 'result' | 'region' | 'goblet'
 
-type QueryStatus = 'idle' | 'loading' | 'success' | 'queued' | 'error'
+type QueryStatus = 'idle' | 'loading' | 'success' | 'error'
 
 const OVERVIEW_BY_CELL_AND_STAGE: Record<
   CellType,
@@ -311,10 +311,6 @@ function getScRnaImageUrl(opts: { gene: string; sampleType: Stage; cellType: Cel
   return `${path}/genes/${encodedGene}?sample_type=${encodedStage}`
 }
 
-function isValidEmail(email: string): boolean {
-  return /^[a-zA-Z0-9_.+-]+@([a-zA-Z0-9-]+\.)+[a-zA-Z]+$/.test(email)
-}
-
 export default function Scrna() {
   const { hash } = useLocation()
 
@@ -323,12 +319,10 @@ export default function Scrna() {
   const [tab, setTab] = useState<ScrnaTab>('overview')
 
   const [gene, setGene] = useState('')
-  const [email, setEmail] = useState('')
   const [geneDropdownOpen, setGeneDropdownOpen] = useState(false)
   const [queryStatus, setQueryStatus] = useState<QueryStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
-  const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
 
 
   const geneUpperToCanonical = useMemo(() => {
@@ -383,13 +377,11 @@ export default function Scrna() {
     setImgDataUrl(null)
     setError(null)
     setQueryStatus('idle')
-    setQueuedMsg(null)
   }, [cellType, stage])
 
   function submitGeneQuery() {
     const gRaw = gene.trim()
     setError(null)
-    setQueuedMsg(null)
     setImgDataUrl(null)
 
     if (!gRaw) {
@@ -403,12 +395,6 @@ export default function Scrna() {
       return
     }
 
-    const em = email.trim()
-    if (em && !isValidEmail(em)) {
-      setError('If you enter an email, it must be valid.')
-      return
-    }
-
     setQueryStatus('loading')
     const url = `${getScRnaImageUrl({
       gene: canonical,
@@ -416,23 +402,6 @@ export default function Scrna() {
       cellType,
     })}&_=${Date.now()}`
     setImgDataUrl(url)
-
-    if (em && isValidEmail(em)) {
-      const plotUrl = url.replace(/&_=\d+$/, '')
-      const context =
-        cellType === 'epithelial' ? 'scrna_epithelial' : 'scrna_eec'
-      void fetch('/api/email-plot-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          context,
-          email: em,
-          gene: canonical,
-          sample_type: stage,
-          plot_url: plotUrl,
-        }),
-      }).catch(() => {})
-    }
   }
 
   return (
@@ -577,69 +546,52 @@ export default function Scrna() {
           {tab === 'result' ? (
             <div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 220 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={fieldLabel}>Gene Name</span>
-                    <div className="scrna-dropdown-wrap">
-                      <input
-                        value={gene}
-                        onChange={(e) => {
-                          setGene(e.target.value)
-                          setGeneDropdownOpen(true)
-                          setError(null)
-                        }}
-                        style={input}
-                        placeholder="Search… e.g. LGR5, EPCAM, MUC2"
-                        autoComplete="off"
-                        onFocus={(e) => {
-                          setGeneDropdownOpen(true)
-                          e.currentTarget.style.borderColor = 'var(--accent)'
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--border2)'
-                          window.setTimeout(() => setGeneDropdownOpen(false), 200)
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') submitGeneQuery()
-                        }}
-                      />
-                      <div
-                        className={`scrna-gene-dropdown${
-                          geneDropdownOpen && gene.trim() && filteredGenes.length ? ' open' : ''
-                        }`}
-                      >
-                        {filteredGenes.map((g) => (
-                          <div
-                            key={g}
-                            role="option"
-                            className="scrna-dropdown-item"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              setGene(g)
-                              setGeneDropdownOpen(false)
-                              setError(null)
-                            }}
-                          >
-                            {g}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={fieldLabel}>Email (optional)</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 }}>
+                  <span style={fieldLabel}>Gene Name</span>
+                  <div className="scrna-dropdown-wrap">
                     <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={gene}
+                      onChange={(e) => {
+                        setGene(e.target.value)
+                        setGeneDropdownOpen(true)
+                        setError(null)
+                      }}
                       style={input}
-                      placeholder="your@email.edu"
+                      placeholder="Search… e.g. LGR5, EPCAM, MUC2"
+                      autoComplete="off"
+                      onFocus={(e) => {
+                        setGeneDropdownOpen(true)
+                        e.currentTarget.style.borderColor = 'var(--accent)'
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border2)'
+                        window.setTimeout(() => setGeneDropdownOpen(false), 200)
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') submitGeneQuery()
                       }}
-                      onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                      onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border2)')}
                     />
+                    <div
+                      className={`scrna-gene-dropdown${
+                        geneDropdownOpen && gene.trim() && filteredGenes.length ? ' open' : ''
+                      }`}
+                    >
+                      {filteredGenes.map((g) => (
+                        <div
+                          key={g}
+                          role="option"
+                          className="scrna-dropdown-item"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setGene(g)
+                            setGeneDropdownOpen(false)
+                            setError(null)
+                          }}
+                        >
+                          {g}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -670,7 +622,6 @@ export default function Scrna() {
                   {error}
                 </div>
               ) : null}
-              {queuedMsg ? <div style={{ marginBottom: 16, ...subtle }}>{queuedMsg}</div> : null}
 
               <div style={card}>
                 <div style={cardHeader}>

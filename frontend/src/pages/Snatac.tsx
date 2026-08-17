@@ -8,7 +8,7 @@ import { SCRNA_GENES } from '../data/scrnaGenes'
 
 type CellType = 'all' | 'epithelial'
 type SnatacTab = 'overview' | 'result'
-type QueryStatus = 'idle' | 'loading' | 'success' | 'queued' | 'error'
+type QueryStatus = 'idle' | 'loading' | 'success' | 'error'
 
 /** Default overview figures (legacy `frontend-old/html/snatac.html` static-imgs). Serve from `public/imgs/`. */
 const OVERVIEW_BY_CELL: Record<
@@ -268,7 +268,6 @@ export default function Snatac() {
   const [queryStatus, setQueryStatus] = useState<QueryStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
-  const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
 
   const filteredAtacGenes = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -287,7 +286,6 @@ export default function Snatac() {
     setImgDataUrl(null)
     setError(null)
     setQueryStatus('idle')
-    setQueuedMsg(null)
   }, [cellType])
 
   const resultTitle = `snATAC · ${cellType === 'all' ? 'All cell types' : 'Epithelial'} · Result Chart · Coverage Plot`
@@ -301,7 +299,6 @@ export default function Snatac() {
   function submitQuery() {
     const loci = query.trim()
     setError(null)
-    setQueuedMsg(null)
     setImgDataUrl(null)
 
     if (!loci) {
@@ -501,7 +498,6 @@ export default function Snatac() {
               {error ? (
                 <div style={{ marginBottom: 16, color: 'var(--red)', fontSize: '0.82rem', fontWeight: 500 }}>{error}</div>
               ) : null}
-              {queuedMsg ? <div style={{ marginBottom: 16, ...subtle }}>{queuedMsg}</div> : null}
 
               <div style={card}>
                 <div style={cardHeader}>
