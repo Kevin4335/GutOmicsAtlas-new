@@ -3,15 +3,8 @@ from _thread import start_new_thread
 from time import sleep
 import urllib.error
 import urllib.request
-from myBasics import binToBase64
 import os
 from ai import process_ai_chat
-
-IS_SERVER = False
-IS_SERVER = True
-
-_SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
-DOCKER_DATA_DIR = os.path.normpath(os.path.join(_SERVER_DIR, '..', 'docker_data'))
 
 # Same-origin /api/{name}/… → local R httpuv ports (resources/*.R).
 R_API_PREFIX_TO_PORT: dict[str, int] = {
@@ -21,54 +14,10 @@ R_API_PREFIX_TO_PORT: dict[str, int] = {
     'atac-celltype': 9027,
 }
 
-NO_CACHE = 100000001
-CACHE_ALL = 100000002
-
-CACHE_MODE = NO_CACHE
-if (IS_SERVER):
-    CACHE_MODE = CACHE_ALL
-BROWSER_CACHE = False
-if (IS_SERVER):
-    BROWSER_CACHE = True
-
-USE_BUILT = False
+BROWSER_CACHE = True
 
 # React frontend build (Vite). Server serves from here for /, /index.html, /assets/*, and SPA fallback.
 FRONTEND_DIST = "frontend/dist"
-
-# Legacy assets (css, js, imgs) only needed for /html/*. Omit when dirs missing; React is primary.
-registered = []
-if os.path.isdir('./css'):
-    for f in os.listdir('./css'):
-        if f.endswith('.css'):
-            registered.append(f'/css/{f}')
-_js_dir = './js-build' if USE_BUILT else './js'
-if os.path.isdir(_js_dir):
-    for f in os.listdir(_js_dir):
-        if f.endswith('.js'):
-            registered.append(f'/js/{f}')
-if os.path.isdir('./imgs'):
-    for f in os.listdir('./imgs'):
-        if 'no_embed' in f.lower():
-            continue
-        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-            registered.append(f'/imgs/{f}')
-
-cached_files = {}
-
-
-
-def access_file(path: str, bin: bool):
-    if (CACHE_MODE == CACHE_ALL and path in cached_files):
-        data = cached_files[path]
-    else:
-        with open(path.replace('/js/', '/js-build/') if USE_BUILT else path, 'rb') as f:
-            data = f.read()
-        if (CACHE_MODE == CACHE_ALL):
-            cached_files[path] = data
-    if (bin):
-        return data
-    return data.decode('utf-8')
 
 class Request(BaseHTTPRequestHandler):
     def do_HEAD(self):
@@ -107,16 +56,8 @@ class Request(BaseHTTPRequestHandler):
         # React SPA: / and /index.html
         if path == '/' or path == '/index.html':
             return self.serve_react_index()
-        if (path.startswith('/html/')):
-            return self.process_html(path)
         if (path.startswith('/imgs/')):
-            # Prefer Vite build assets under frontend/dist/imgs/*
-            rel = path.lstrip("/")
-            if rel and ".." not in rel:
-                fp = os.path.join(FRONTEND_DIST, rel)
-                if os.path.isfile(fp):
-                    return self.serve_react_static(path)
-            return self.process_img(path)
+            return self.serve_react_static(path)
         if (path.startswith('/api/')):
             return self.process_api()
         # Same-origin proxy to local R httpuv services (browser <img> / fetch cannot hit 127.0.0.1 R ports).
@@ -129,8 +70,6 @@ class Request(BaseHTTPRequestHandler):
             return self.process_data()
         if(path.startswith('/data/')):
             return self.process_data()
-        if(path.startswith('/generated/')):
-            return self.process_generated()
         if (path == '/robots.txt'):
             return self.process_robots_txt()
         if (path == '/sitemap.xml'):
@@ -203,23 +142,6 @@ class Request(BaseHTTPRequestHandler):
         self.wfile.flush()
         return
 
-    def process_generated(self):
-        # strip querystring (e.g. cache-buster ?t=...)
-        file_name = self.path.split('?', 1)[0][len('/generated/'):]
-        assert('..' not in file_name)
-        file_path = os.path.join(DOCKER_DATA_DIR, file_name)
-        with open(file_path, 'rb') as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header('Connection', 'keep-alive')
-        self.send_header('Content-Type', 'image/png')
-        self.send_header('Content-Length', len(data))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(data)
-        self.wfile.flush()
-        return
-
     def process_api(self):
         """Proxy GET /api/{scrna-epithelial|scrna-eec|atac-all|atac-celltype}/… to the matching R port."""
         path, _, query = self.path.partition('?')
@@ -262,38 +184,7 @@ class Request(BaseHTTPRequestHandler):
         self.wfile.write(data)
         self.wfile.flush()
         return
-        
-            
-            
-    
-    def process_img(self, path: str) -> None:
-        if not os.path.isdir('./imgs'):
-            return self.process_404()
-        path = path[6:]
-        assert('..' not in path)
-        assert('no_embed' in path)
-        with open(f'./imgs/{path}', 'rb') as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header('Connection', 'keep-alive')
-        if (path.endswith('.xls') == False):
-            self.send_header('Content-Type', 'image/png')
-        else:
-            self.send_header('Content-Type', 'application/vnd.ms-excel')
-            name = 'excel.xls'
-            if ('region' in path):
-                name = 'scRNA_region_comparison.xls'
-            if ('goblet' in path):
-                name = 'scRNA_goblet_cells.xls'
-            self.send_header('Content-Disposition', 'attachment; filename="' + name + '"')
-        self.send_header('Content-Length', len(data))
-        if (BROWSER_CACHE):
-            self.send_header('Cache-Control', 'max-age=300')
-        self.end_headers()
-        self.wfile.write(data)
-        self.wfile.flush()
-        return
-    
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Connection', 'keep-alive')
@@ -305,84 +196,9 @@ class Request(BaseHTTPRequestHandler):
         self.wfile.write(b'')
         self.wfile.flush()
         return
-    
-    def process_html(self, path: str) -> None:
-        if not os.path.isdir('./html'):
-            return self.process_404()
-        if (path.find('..') >= 0):
-            return self.process_404(attack=True)
-        # print(path)
-        if ('-' in path):
-            path = path[6:]
-            assert(path.startswith('sm-') and path.endswith('.html'))
-            num = int(path[3:-5])
-            html = access_file('./html/sm-i.html', False)
-            if (IS_SERVER):
-                html = html.replace('<!--$jtc.unique.replacer$', '')
-                html = html.replace('$jtc.unique.replacer$-->', '')
-            for reg in registered:
-                if (html.find(reg) == -1):
-                    continue
-                file = access_file('.' + reg, True)
-                file = binToBase64(file)
-                if (reg.endswith('.css')):
-                    html = html.replace(reg, f'data:text/css;base64,{file}')
-                if (reg.endswith('.js')):
-                    html = html.replace(reg, f'data:application/javascript;base64,{file}')
-                if (reg.endswith('.png')):
-                    html = html.replace(reg, f'data:image/png;base64,{file}')
-                if (reg.endswith('.jpg') or reg.endswith('.jpeg')):
-                    html = html.replace(reg, f'data:image/jpeg;base64,{file}')
-                if (reg.endswith('.gif')):
-                    html = html.replace(reg, f'data:image/gif;base64,{file}')
-            html = html.replace('$sm-img-replacer$', str(num))
-            html = html.encode('utf-8')
-            self.send_response(200)
-            self.send_header('Connection', 'keep-alive')
-            self.send_header('Content-Type', 'text/html')
-            self.send_header('Content-Length', len(html))
-            self.end_headers()
-            self.wfile.write(html)
-            self.wfile.flush()
-            return
-        path = '.' + path
-        try:
-            html = access_file(path, False)
-        except:
-            return self.process_404()
-        if (IS_SERVER):
-            html = html.replace('<!--$jtc.unique.replacer$', '')
-            html = html.replace('$jtc.unique.replacer$-->', '')
-        for reg in registered:
-            if (html.find(reg) == -1):
-                continue
-            file = access_file('.' + reg, True)
-            file = binToBase64(file)
-            if (reg.endswith('.css')):
-                html = html.replace(reg, f'data:text/css;base64,{file}')
-            if (reg.endswith('.js')):
-                html = html.replace(reg, f'data:application/javascript;base64,{file}')
-            if (reg.endswith('.png')):
-                html = html.replace(reg, f'data:image/png;base64,{file}')
-            if (reg.endswith('.jpg') or reg.endswith('.jpeg')):
-                html = html.replace(reg, f'data:image/jpeg;base64,{file}')
-            if (reg.endswith('.gif')):
-                html = html.replace(reg, f'data:image/gif;base64,{file}')
-        html = html.encode('utf-8')
-        self.send_response(200)
-        self.send_header('Connection', 'keep-alive')
-        self.send_header('Content-Type', 'text/html')
-        self.send_header('Content-Length', len(html))
-        if (BROWSER_CACHE):
-            self.send_header('Cache-Control', 'max-age=300')
-        self.end_headers()
-        self.wfile.write(html)
-        self.wfile.flush()
-        return
-    
-    
+
     def serve_react_index(self) -> None:
-        """Serve the React SPA index.html. Fall back to /html/home.html if the build is missing."""
+        """Serve the React SPA index.html from frontend/dist. 404 if the build is missing."""
         idx = os.path.join(FRONTEND_DIST, "index.html")
         if os.path.isfile(idx):
             with open(idx, "rb") as f:
@@ -432,7 +248,7 @@ class Request(BaseHTTPRequestHandler):
         self.wfile.write(data)
         self.wfile.flush()
 
-    def process_404(self, attack=False) -> None:
+    def process_404(self) -> None:
         self.send_response(404)
         self.send_header('Connection', 'keep-alive')
         self.send_header('Content-Length', 13)
@@ -443,10 +259,7 @@ class Request(BaseHTTPRequestHandler):
         return
 
 
-pp = 9037
-if(IS_SERVER):
-    pp = 8000
-server = ThreadingHTTPServer(('0.0.0.0', pp), Request)
+server = ThreadingHTTPServer(('0.0.0.0', 8000), Request)
 start_new_thread(server.serve_forever, ())
 while True:
     sleep(10)

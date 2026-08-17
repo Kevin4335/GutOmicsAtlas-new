@@ -30,7 +30,7 @@ The assistant is built around a **frontier language model** (large AI model). In
 
 Supporting files:
 
-- **`utils.py`** — Master lists of valid gene names and small shared helpers used by both the web server and the AI.
+- **`gene_lists.py`** / **`gene_data/`** — Allowlists of valid gene names (and a leftover metabolite name list) used by the AI planner.
 - **`utils/`** — Restart scripts and R package installers for operators.
 
 ---
@@ -65,7 +65,7 @@ Each planned action runs **at the same time**, for speed. Examples:
 | **GLKB (literature)** | Queries the GLKB service with a focused biomedical question; returns text evidence from the literature |
 | **Other** | *Coming soon* — additional optional assistants and integrations |
 
-Gene names are checked against allowlists in `utils.py` so the AI only requests genes the atlas actually contains.
+Gene names are checked against allowlists in `gene_lists.py` (loaded from `gene_data/*.json`) so the AI only requests genes the atlas actually contains.
 
 **Spatial metabolomics** is no longer offered; the AI will not plan metabolite plots.
 
@@ -91,7 +91,7 @@ The sections below are for developers and system operators: file layout, install
 
 | Path | Role |
 |------|------|
-| `server.py` | HTTP server: SPA, `/imgs/`, `/data/st/…`, `/r/…` R proxy, named `/api/{scrna,atac}/…` R proxy, `POST /chat` |
+| `server.py` | HTTP server on **8000**: SPA from `frontend/dist`, `/imgs/`, `/data/st/…`, `/r/…` R proxy, named `/api/{scrna,atac}/…` R proxy, `POST /chat` |
 | `ai.py` | AI chat (`process_ai_chat`) — tool planning and execution |
 | `gene_lists.py` | Gene allowlists, `format_gene()`, metabolomics name list (loads `gene_data/*.json`) |
 | `gene_data/` | JSON allowlists: scRNA/snATAC genes, spatial transcriptomics genes, metabolite names |
@@ -259,7 +259,7 @@ Optional ggplot2 pin: `Rscript utils/downgrade_ggplot2.R`
 
 | URL | Source |
 |-----|--------|
-| `/imgs/…` | `frontend/dist/imgs/` (from `public/imgs/` after build); fallback `webserver/imgs/` |
+| `/imgs/…` | `frontend/dist/imgs/` (from `public/imgs/` after build) |
 | `/data/st/{gene}.png` | `data/Xenium/Xenium figures/{gene}.png` |
 | `/st/{gene}.png` | Rewritten to `/data/st/…` in `server.py` |
 
