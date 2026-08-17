@@ -10,16 +10,12 @@ openai>=1.0.0
 anthropic>=0.25.0
 requests>=2.31.0
 
-# --- Images / PDFs ---
+# --- Images ---
 # Used by `ai.py` to downscale PNGs before sending to vision models.
 Pillow>=10.0.0
-# Provides `fitz` import used in `utils.py` / `convert.py`.
-PyMuPDF>=1.23.0
 
 # --- Optional local config loading ---
 python-dotenv>=1.0.0
 
 # --- Internal packages (pip-installable here) ---
 myBasics
-mySecrets
-myHttp

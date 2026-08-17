@@ -1,23 +1,13 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from _thread import start_new_thread
-from time import sleep, time
+from time import sleep
 import json
 import re
 import urllib.error
 import urllib.request
 from myBasics import binToBase64
-from mySecrets import hexToStr
 import os
-from queue import Queue
-from R_http import R_call
-from utils import *
-from hashlib import sha256
-from random import randint
-from _thread import start_new_thread
-from datetime import datetime, timezone
 from ai import process_ai_chat
-from mySecrets import hexToStr
-from secrets import token_hex
 from my_email import send_email
 
 IS_SERVER = False
@@ -33,6 +23,34 @@ _EMAIL_PLOT_LINK_CONTEXTS: dict[str, str] = {
 }
 _EMAIL_PLOT_PNG_MAX_BYTES = 25 * 1024 * 1024
 _EMAIL_PLOT_FETCH_TIMEOUT_SEC = 180
+
+# Same-origin /api/{name}/… → local R httpuv ports (resources/*.R).
+R_API_PREFIX_TO_PORT: dict[str, int] = {
+    'scrna-epithelial': 9025,
+    'scrna-eec': 9028,
+    'atac-all': 9026,
+    'atac-celltype': 9027,
+}
+
+
+def _internal_plot_fetch_url(plot_url: str) -> str | None:
+    """Map a browser plot URL to an R httpuv URL this process can GET."""
+    if len(plot_url) > 2048:
+        return None
+    path, _, query = plot_url.partition('?')
+    m = re.match(
+        r'^/api/(scrna-epithelial|scrna-eec|atac-all|atac-celltype)/genes/([^/?#]+)$',
+        path,
+    )
+    if m:
+        port = R_API_PREFIX_TO_PORT[m.group(1)]
+        url = f'http://127.0.0.1:{port}/genes/{m.group(2)}'
+        if query:
+            url = f'{url}?{query}'
+        return url
+    if re.match(r'^https?://[^/?#]+/genes/', plot_url):
+        return plot_url
+    return None
 
 
 def _fetch_png_bytes(plot_url: str) -> bytes:
@@ -156,7 +174,7 @@ class Request(BaseHTTPRequestHandler):
             return self.process_img(path)
         if (path.startswith('/api/')):
             return self.process_api()
-        # Same-origin proxy to local R httpuv services (hex path). Browser uses fetch(); <img> cannot use R URLs (they return text).
+        # Same-origin proxy to local R httpuv services (browser <img> / fetch cannot hit 127.0.0.1 R ports).
         if path.startswith('/r/'):
             return self.process_r_proxy()
         # Spatial static datasets live outside frontend/dist; serve via process_data()
@@ -320,7 +338,8 @@ class Request(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             return
-        if not re.match(r'^https?://[^/?#]+/genes/', plot_url) or len(plot_url) > 2048:
+        fetch_url = _internal_plot_fetch_url(plot_url)
+        if fetch_url is None:
             self.send_response(400)
             self.send_header('Connection', 'keep-alive')
             self.send_header('Content-Length', 0)
@@ -337,7 +356,7 @@ class Request(BaseHTTPRequestHandler):
 
         def mail_thread():
             try:
-                png_bytes = _fetch_png_bytes(plot_url)
+                png_bytes = _fetch_png_bytes(fetch_url)
                 fname = f'{gene}_{sample_type}.png'
                 body = f'{gene} ({sample_type})\n\nCoverage plot is attached.'
                 send_email(email, title, body, attachments=[(fname, png_bytes)])
@@ -354,64 +373,23 @@ class Request(BaseHTTPRequestHandler):
         return
 
     def process_api(self):
-        path = self.path
-        path = path[5:]
-        data = hexToStr(path)
-        data = json.loads(data)
-        file_name = token_hex(64) + '.pdf'
-        R_file_name = '/root/docker_data/' + file_name
-        py_file_name = os.path.join(DOCKER_DATA_DIR, file_name)
-        success, error = (False, b'')
-        if (data['function'] == 'scrna' and data['type'] == 'ep'):
-            # email here
-            id = 25
-            gene = data['gene']
-            email = data['email']
-            def email_thread():
-                success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-                png_bytes = pdf_to_png_bytes(py_file_name)
-                st = (data.get('sample_type') or 'unknown').strip()
-                title = 'Result for scRNA-Seq Epithelial cells analysis'
-                content = f'{gene} ({st})\n\nCoverage plot is attached.'
-                fname = f'{gene}_{st}.png'
-                send_email(email, title, content, attachments=[(fname, png_bytes)])
-            start_new_thread(email_thread, ())
-            self.send_response(202)
-            self.send_header('Connection', 'keep-alive')
-            self.send_header('Content-Length', 0)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(b'')
-            self.wfile.flush()
-            return
-        if (data['function'] == 'scrna' and data['type'] == 'eecs'):
-            id = 24
-            gene = data['gene']
-            success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-        if (data['function'] == 'snatac' and data['type'] == 'all'):
-            id = 26
-            gene = data['gene']
-            success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-        if (data['function'] == 'snatac' and data['type'] == 'ep'):
-            id = 27
-            gene = data['gene']
-            success, error = R_call(id, {'p1': gene, 'p2': R_file_name})
-        response = {}
-        if (success == False):
-            error = binary_to_str(error)
-            response = {'error': error}
-        else:
-            response = {'img': binToBase64(pdf_to_png_bytes(py_file_name))}
-        response = json.dumps(response, ensure_ascii=False)
-        response = response.encode('utf-8')
-        self.send_response(200 if success else 500)
-        self.send_header('Connection', 'keep-alive')
-        self.send_header('Content-Length', len(response))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(response)
-        self.wfile.flush()
-        return
+        """Proxy GET /api/{scrna-epithelial|scrna-eec|atac-all|atac-celltype}/… to the matching R port."""
+        path, _, query = self.path.partition('?')
+        rest = path[5:]
+        if not rest or '..' in rest:
+            return self.process_404()
+        slash = rest.find('/')
+        prefix = rest if slash < 0 else rest[:slash]
+        port = R_API_PREFIX_TO_PORT.get(prefix)
+        if port is None:
+            return self.process_404()
+        upstream = rest[slash:] if slash >= 0 else '/'
+        if not upstream.startswith('/'):
+            upstream = '/' + upstream
+        self.path = f'/r/{port}{upstream}'
+        if query:
+            self.path = f'{self.path}?{query}'
+        return self.process_r_proxy()
     
     def process_data(self):
         path = self.path

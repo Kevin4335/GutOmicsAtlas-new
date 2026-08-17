@@ -91,11 +91,11 @@ The sections below are for developers and system operators: file layout, install
 
 | Path | Role |
 |------|------|
-| `server.py` | HTTP server: SPA, `/imgs/`, `/data/st/…`, `/r/…` R proxy, legacy hex `/api/…`, `POST /chat` |
+| `server.py` | HTTP server: SPA, `/imgs/`, `/data/st/…`, `/r/…` R proxy, named `/api/{scrna,atac}/…` R proxy, `POST /chat` |
 | `ai.py` | AI chat (`process_ai_chat`) — tool planning and execution |
-| `utils.py` | Gene allowlists, `format_gene()`, PDF→PNG, legacy metabolomics name list |
+| `gene_lists.py` | Gene allowlists, `format_gene()`, metabolomics name list (loads `gene_data/*.json`) |
+| `gene_data/` | JSON allowlists: scRNA/snATAC genes, spatial transcriptomics genes, metabolite names |
 | `config.py` | Language-model settings: Anthropic API key and `ANTHROPIC_MODEL` (Claude model id) |
-| `R_http.py` | Legacy hex-encoded calls into R (`9000 + function_id`) |
 | `resources/` | **Production** R httpuv entry scripts (started by `utils/restart_r_servers.sh`) |
 | `frontend/public/imgs/` | Default static overview figures (copied to `dist/` on build) |
 | `utils/restart_r_servers.sh` | Restart four R backends in `screen` |
@@ -137,20 +137,18 @@ The main chat **planner** and **synthesizer** currently call the **Anthropic Mes
 
 ---
 
-## `utils.py`
+## `gene_lists.py`
 
-Imported by `ai.py` and `server.py`.
+Imported by `ai.py`. Gene arrays live in `gene_data/*.json`.
 
 | Symbol | Description |
 |--------|-------------|
 | `format_gene(name)` | Normalize user input (uppercase; strip `.`, `-`, `/`, spaces) for lookup |
 | `rna_atac_genes` / `rna_atac_genes_formatted_to_origin` | Allowlist for scRNA and snATAC |
 | `st_genes` / `st_genes_formatted_to_origin` | Spatial transcriptomics allowlist (**422 genes**) |
-| `pdf_to_png_bytes(path)` | First page of a PDF → PNG (PyMuPDF) for legacy API responses |
-| `binary_to_str(data)` | Decode R error bytes |
 | `spatial_meta` | Legacy metabolite name list (295 entries); **not used by the current AI planner** |
 
-Keep `utils.py` in sync with `frontend/src/data/scrnaGenes.ts` and `frontend/src/data/stGenes.ts`.
+Keep `gene_data/rna_atac_genes.json` and `gene_data/st_genes.json` in sync with `frontend/src/data/scrnaGenes.ts` and `frontend/src/data/stGenes.ts`.
 
 ---
 
@@ -241,9 +239,8 @@ Detach from a session: `Ctrl+A`, then `D`.
 Each R app supports:
 
 - **`/genes/{name}`** — returns a PNG directly (used by `ai.py` and browser plot URLs).
-- **Legacy hex paths** — PDF written to disk; used by older `R_http.R_call` / hex `/api/` flows.
 
-`server.py` exposes **`/r/{port}/{path}`** — same-origin proxy to `http://127.0.0.1:{port}/{path}` for browser `<img>` tags.
+`server.py` exposes **`/r/{port}/{path}`** and named **`/api/{scrna-epithelial,scrna-eec,atac-all,atac-celltype}/…`** — same-origin proxies to `http://127.0.0.1:{port}/{path}` for browser `<img>` tags.
 
 > **Note:** A separate script at the repo root (`/home/ubuntu/website/restart_r_servers.sh`) starts copies under `../data/` with different working directories and an EEC port of **9024**. That layout is **not** what `webserver/resources/` and `ai.py` expect. Use `webserver/utils/restart_r_servers.sh` for this deployment.
 

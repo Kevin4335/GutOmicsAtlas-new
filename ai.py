@@ -1,7 +1,5 @@
 # GutOmicsAtlas AI chat backend: plans tool calls, runs plots/literature helpers, and synthesizes replies for POST /chat.
-from R_http import *
-from utils import *
-from mySecrets import hexToStr
+from gene_lists import format_gene, rna_atac_genes_formatted_to_origin, st_genes_formatted_to_origin
 from openai import OpenAI
 import time
 from queue import Queue
