@@ -1,3 +1,6 @@
+# GutOmicsAtlas HTTP server: serves the React SPA (frontend/dist), static /imgs and
+# /data/st figures, same-origin proxies to local R plot backends (/api/… and /r/…),
+# and POST /chat for the AI assistant. Listens on port 8000.
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from _thread import start_new_thread
 from time import sleep
