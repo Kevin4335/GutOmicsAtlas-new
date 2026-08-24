@@ -13,13 +13,17 @@ Interactive site for human gut scRNA-seq, snATAC-seq, and spatial transcriptomic
 1. **React frontend** (`frontend/`): pages, gene search, overview figures. Production build is `frontend/dist/`.
 2. **`server.py`**: HTTP on port **8000**. Serves the SPA, `/imgs/`, `/data/st/…`, proxies R plots, handles `POST /chat`.
 3. **R plot servers** (`resources/`): on-demand scRNA and snATAC PNGs. Spatial gene images are static files, not rendered live.
-4. **`ai.py`**: Chat with AI. Plans tool calls, runs them in parallel, then writes one reply. Planner and synthesizer use Claude (`config.py` / `ANTHROPIC_MODEL`). Swap that client to use another model; plot tools and GLKB stay the same.
+4. **`ai.py`**: Chat with AI. Plans tool calls, runs them in parallel, then writes one reply. Planner and synthesizer use Claude (`config.py` / `ANTHROPIC_MODEL`). Swap that client to use another model; plot tools and GLKB stay the same. Details: **[AI_README.md](AI_README.md)**.
 
 Gene allowlists: `gene_lists.py` loads `gene_data/*.json`. Operator scripts: `utils/`.
 
+### AI assistant provenance
+
+An earlier version of the chat code was adapted from a prior CosMx-based assistant (COVID-Lung CosMx). The current `ai.py` has been rewritten for GutOmicsAtlas and uses a different architecture (see [AI_README.md](AI_README.md)).
+
 ## Chat with AI (`POST /chat`)
 
-Entry: `process_ai_chat`. Body is `{ "history": [...], "options": { "glkb": true } }` or a bare message array. Rate limit: 100 requests/hour/process.
+Entry: `process_ai_chat`. Body is `{ "history": [...], "options": { "glkb": true } }` or a bare message array. Rate limit: 100 requests/hour/process. Full architecture, tools, and examples: **[AI_README.md](AI_README.md)**.
 
 1. **Plan**: Claude picks tools (`create_plan`).
 2. **Execute**: tools run concurrently.
@@ -42,7 +46,8 @@ Optional `.env` in `webserver/` is loaded by `ai.py` if `python-dotenv` is insta
 | Path | Role |
 |------|------|
 | `server.py` | HTTP on **8000**: SPA from `frontend/dist`, `/imgs/`, `/data/st/…`, `/r/…` and named `/api/{scrna,atac}/…` R proxies, `POST /chat` |
-| `ai.py` | Chat planner, tool execution, synthesizer |
+| `ai.py` | Chat planner, tool execution, synthesizer (see [AI_README.md](AI_README.md)) |
+| `AI_README.md` | AI architecture: plan → execute → synthesize, tools, HTTP contract, provenance |
 | `gene_lists.py` | `format_gene()` and allowlist maps (from `gene_data/*.json`) |
 | `gene_data/` | scRNA/snATAC genes, spatial transcriptomics genes, unused metabolite names |
 | `config.py` | Anthropic API key and `ANTHROPIC_MODEL` |

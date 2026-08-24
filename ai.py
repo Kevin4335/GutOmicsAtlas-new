@@ -975,7 +975,7 @@ def get_gpt_resp(
             for i, (result_content, display_msg) in enumerate(exec_results):
                 if display_msg:
                     collected_messages.append(display_msg)
-                # We need a stable fake tool_use_id for each step so we can
+                # We need a stable constructed tool_use_id for each step so we can
                 # build a valid tool_result message for the synthesizer.
                 fake_id = f"plan_step_{i}"
                 tool_results_for_claude.append({
@@ -1008,7 +1008,7 @@ def get_gpt_resp(
             )
 
         # Build the synthesizer message history.
-        # We inject a fake assistant turn that "called" the planned tools,
+        # We inject a constructed assistant turn that called the planned tools,
         # followed by a user turn with all the tool results, so Claude
         # understands what was executed and can interpret the results.
         synth_msgs = list(anthropic_msgs)  # copy
