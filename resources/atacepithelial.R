@@ -59,6 +59,18 @@ app <- list(
     q <- if (!is.null(req$QUERY_STRING)) req$QUERY_STRING else ""
     log_line(sprintf("REQ path=%s query=%s", url, q))
 
+    if (url == "/health" || url == "/health/") {
+      body <- '{"status":"ok","service":"atac-celltype"}'
+      return(list(
+        status = 200L,
+        headers = list(
+          'Content-Type' = 'application/json; charset=utf-8',
+          'Content-Length' = as.character(nchar(body))
+        ),
+        body = body
+      ))
+    }
+
     # New mode: direct PNG response for browser <img src>.
     if (grepl("^/genes/", url)) {
       loci <- URLdecode(sub("^/genes/", "", url))

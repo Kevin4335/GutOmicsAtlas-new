@@ -33,6 +33,16 @@ class Request(BaseHTTPRequestHandler):
             # avoid noisy stack traces on random scanners
             self.send_error(500)
 
+    def process_health(self):
+        body = b'{"status":"ok","service":"webserver"}'
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', len(body))
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+        self.wfile.write(body)
+        self.wfile.flush()
+
     def process_robots_txt(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
@@ -56,6 +66,8 @@ class Request(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.flush()
             return
+        if path == '/health' or path == '/health/':
+            return self.process_health()
         # React SPA: / and /index.html
         if path == '/' or path == '/index.html':
             return self.serve_react_index()

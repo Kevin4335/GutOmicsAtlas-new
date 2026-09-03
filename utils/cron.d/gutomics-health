@@ -1,0 +1,15 @@
+# GutOmicsAtlas health checks.
+# Source of truth: webserver/utils/cron.d/gutomics-health
+# Install: bash utils/install_healthcheck_cron.sh
+#
+# Do not edit only on the server — change the repo copy, then re-install.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=America/New_York
+
+# Daily 02:00 — notify only if a /health check fails
+0 2 * * * ubuntu /home/ubuntu/website/webserver/utils/healthcheck.sh >> /tmp/gutomics_healthcheck.log 2>&1
+
+# Weekly Sunday 02:10 — always notify (OK summary, or failures)
+10 2 * * 0 ubuntu /home/ubuntu/website/webserver/utils/healthcheck.sh --report >> /tmp/gutomics_healthcheck.log 2>&1

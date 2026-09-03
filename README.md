@@ -101,7 +101,27 @@ screen -ls
 for p in 9025 9026 9027 9028; do sudo lsof -nP -iTCP:$p -sTCP:LISTEN; done
 ```
 
-Detach: `Ctrl+A`, then `D`. Each app serves `/genes/{name}` as a PNG. `server.py` proxies that as `/r/{port}/{path}` and `/api/{scrna-epithelial,scrna-eec,atac-all,atac-celltype}/…`.
+Detach: `Ctrl+A`, then `D`. Each app serves `/genes/{name}` as a PNG and `GET /health` → `{"status":"ok",…}`. `server.py` proxies plots as `/r/{port}/{path}` and `/api/{scrna-epithelial,scrna-eec,atac-all,atac-celltype}/…` (so `/api/…/health` works too). Python itself: `GET /health` on port **8000**.
+
+### Health check (cron)
+
+Versioned under `utils/` (not a one-off `crontab -e`):
+
+| File | Role |
+|------|------|
+| `utils/healthcheck.sh` | Curl all five `/health` endpoints; ntfy on failure |
+| `utils/healthcheck.sh --report` | Same checks; **always** ntfy (weekly OK heartbeat) |
+| `utils/cron.d/gutomics-health` | Daily **02:00** fail-only; Sunday **02:10** `--report` (`America/New_York`) |
+| `utils/install_healthcheck_cron.sh` | Copies that file to `/etc/cron.d/gutomics-health` |
+
+```bash
+bash utils/install_healthcheck_cron.sh   # once (sudo); re-run after editing the cron fragment
+bash utils/healthcheck.sh                # silent if OK
+bash utils/healthcheck.sh --report       # always ntfy
+cat /etc/cron.d/gutomics-health
+```
+
+Needs `utils/ntfy.env`. Log: `/tmp/gutomics_healthcheck.log`.
 
 Do not use `/home/ubuntu/website/restart_r_servers.sh` (wrong working dir, EEC on **9024**). Use `webserver/utils/restart_r_servers.sh`.
 
