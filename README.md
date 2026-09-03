@@ -15,7 +15,7 @@ Interactive site for human gut scRNA-seq, snATAC-seq, and spatial transcriptomic
 3. **R plot servers** (`resources/`): on-demand scRNA and snATAC PNGs. Spatial gene images are static files, not rendered live.
 4. **`ai.py`**: Chat with AI. Plans tool calls, runs them in parallel, then writes one reply. Planner and synthesizer use Claude (`config.py` / `ANTHROPIC_MODEL`). Swap that client to use another model; plot tools and GLKB stay the same. Details: **[AI_README.md](AI_README.md)**.
 
-Gene allowlists: `gene_lists.py` loads `gene_data/*.json`. Operator scripts: `utils/`.
+Gene allowlists: `gene_lists.py` loads `gene_data/*.json`. Operator scripts: `utils/`. Phone alerts: `utils/notify.py` via [ntfy.sh](https://ntfy.sh) (`utils/ntfy.env`; see `utils/ntfy.env.example`).
 
 ### AI assistant provenance
 

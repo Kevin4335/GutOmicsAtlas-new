@@ -9,6 +9,8 @@ __pycache__/
 *_logs.txt
 id_rsa
 config.py
+utils/ntfy.env
+.env
 
 instructions/
 EPCOT_Agent.pdf
