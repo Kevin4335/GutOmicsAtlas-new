@@ -38,6 +38,9 @@ CHECKS=(
 
 failures=()
 ok_names=()
+mode="daily"
+[[ "$REPORT" -eq 1 ]] && mode="report"
+ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 for entry in "${CHECKS[@]}"; do
   name="${entry%%|*}"
@@ -62,12 +65,12 @@ if [[ ${#failures[@]} -gt 0 ]]; then
     msg+=$'\n\n'"still ok: $(IFS=', '; echo "${ok_names[*]}")"
   fi
   title="GutOmics health FAIL ($host)"
+  echo "$ts mode=$mode result=FAIL notified=1" >&2
+  echo "$msg" >&2
   if ! "${NOTIFY[@]}" -t "$title" -m "$msg" --priority 4 --tags warning,skull; then
-    echo "healthcheck: notify failed" >&2
-    echo "$msg" >&2
+    echo "$ts mode=$mode notify=FAILED" >&2
     exit 2
   fi
-  echo "$msg" >&2
   exit 1
 fi
 
@@ -75,11 +78,13 @@ fi
 if [[ "$REPORT" -eq 1 ]]; then
   msg="All ${#ok_names[@]} checks OK: $(IFS=', '; echo "${ok_names[*]}")"
   title="GutOmics health OK ($host)"
+  echo "$ts mode=$mode result=OK notified=1 ok=${#ok_names[@]}" >&2
   if ! "${NOTIFY[@]}" -t "$title" -m "$msg" --priority 2 --tags white_check_mark; then
-    echo "healthcheck: notify failed" >&2
-    echo "$msg" >&2
+    echo "$ts mode=$mode notify=FAILED" >&2
     exit 2
   fi
+  exit 0
 fi
 
+echo "$ts mode=$mode result=OK notified=0 ok=${#ok_names[@]}" >&2
 exit 0
