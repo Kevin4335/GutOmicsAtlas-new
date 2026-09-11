@@ -5,6 +5,10 @@ require(ggplot2)
 library(httpuv)
 library(jsonlite)
 
+# Persistent cache (avoids /tmp session cleanup wiping tempfile() paths)
+CACHE_DIR <- "/tmp/r_cache_gut_scrna_epi"
+dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
+
 # ================== Load datasets ==================
 # Use absolute path inside the container (mounted from host /home/ubuntu/website/data).
 # fetal.epi <- readRDS("/root/data/REVISED_DATA/scRNA/Fetal/Epithelialcells/fetalsample.rds")
@@ -117,31 +121,34 @@ app <- list(
           body = body
         ))
       }
-      png_file <- tempfile(fileext = ".png")
+      dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
+      png_file <- file.path(CACHE_DIR, paste0(gene_name, "_", sample_type, ".png"))
       ok <- TRUE
       err_msg <- ""
       started_at <- Sys.time()
-      log_line("PLOT_START scRNA")
-      tryCatch({
-        if (sample_type == "fetal") scRNA(fetal.epi, gene_name, png_file) else scRNA(adult.epi, gene_name, png_file)
-      }, error = function(e) {
-        ok <<- FALSE
-        err_msg <<- conditionMessage(e)
-      })
-      if (!ok) {
-        body <- paste("ERROR:", err_msg)
-        log_line(sprintf("PLOT_ERROR %s", err_msg))
-        return(list(
-          status = 500L,
-          headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
-          body = body
-        ))
+      if (!file.exists(png_file)) {
+        log_line("PLOT_START scRNA")
+        tryCatch({
+          if (sample_type == "fetal") scRNA(fetal.epi, gene_name, png_file) else scRNA(adult.epi, gene_name, png_file)
+        }, error = function(e) {
+          ok <<- FALSE
+          err_msg <<- conditionMessage(e)
+        })
+        if (!ok) {
+          body <- paste("ERROR:", err_msg)
+          log_line(sprintf("PLOT_ERROR %s", err_msg))
+          return(list(
+            status = 500L,
+            headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+            body = body
+          ))
+        }
+        elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
+        log_line(sprintf("PLOT_DONE scRNA elapsed=%.2fs bytes=%d", elapsed, file.info(png_file)$size))
+      } else {
+        log_line(sprintf("CACHE_HIT scRNA gene=%s sample_type=%s", gene_name, sample_type))
       }
-      png_size <- file.info(png_file)$size
-      png_data <- readBin(png_file, what = "raw", n = png_size)
-      unlink(png_file)
-      elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
-      log_line(sprintf("PLOT_DONE scRNA elapsed=%.2fs bytes=%d", elapsed, length(png_data)))
+      png_data <- readBin(png_file, what = "raw", n = file.info(png_file)$size)
       return(list(
         status = 200L,
         headers = list(

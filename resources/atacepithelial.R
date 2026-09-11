@@ -4,6 +4,11 @@ require(Signac)
 require(ggplot2)
 library(httpuv) # jtc
 library(jsonlite) # jtc
+
+# Persistent cache (avoids /tmp session cleanup wiping tempfile() paths)
+CACHE_DIR <- "/tmp/r_cache_gut_atac_epi"
+dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
+
 epithelial<-readRDS("/home/ubuntu/website/data/atac/Epithelial/Epithelialnew.rds")
 #Change path of fragment files
 epithelial@assays[["ATAC"]]@fragments[[1]]@path<-"/home/ubuntu/website/data/atac/source-selected/M1_3834_midgut/fragments.tsv.gz"
@@ -84,31 +89,34 @@ app <- list(
           body = body
         ))
       }
-      png_file <- tempfile(fileext = ".png")
+      dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
+      png_file <- file.path(CACHE_DIR, paste0(gsub("[^A-Za-z0-9._-]+", "_", loci), ".png"))
       ok <- TRUE
       err_msg <- ""
       started_at <- Sys.time()
-      log_line("PLOT_START atacepithelial")
-      tryCatch({
-        atacepithelial(loci, 1000, 1000, png_file)
-      }, error = function(e) {
-        ok <<- FALSE
-        err_msg <<- conditionMessage(e)
-      })
-      if (!ok) {
-        body <- paste("ERROR:", err_msg)
-        log_line(sprintf("PLOT_ERROR %s", err_msg))
-        return(list(
-          status = 500L,
-          headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
-          body = body
-        ))
+      if (!file.exists(png_file)) {
+        log_line("PLOT_START atacepithelial")
+        tryCatch({
+          atacepithelial(loci, 1000, 1000, png_file)
+        }, error = function(e) {
+          ok <<- FALSE
+          err_msg <<- conditionMessage(e)
+        })
+        if (!ok) {
+          body <- paste("ERROR:", err_msg)
+          log_line(sprintf("PLOT_ERROR %s", err_msg))
+          return(list(
+            status = 500L,
+            headers = list('Content-Type' = 'text/plain; charset=utf-8', 'Content-Length' = as.character(nchar(body))),
+            body = body
+          ))
+        }
+        elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
+        log_line(sprintf("PLOT_DONE atacepithelial elapsed=%.2fs bytes=%d", elapsed, file.info(png_file)$size))
+      } else {
+        log_line(sprintf("CACHE_HIT atacepithelial loci=%s", loci))
       }
-      png_size <- file.info(png_file)$size
-      png_data <- readBin(png_file, what = "raw", n = png_size)
-      unlink(png_file)
-      elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
-      log_line(sprintf("PLOT_DONE atacepithelial elapsed=%.2fs bytes=%d", elapsed, length(png_data)))
+      png_data <- readBin(png_file, what = "raw", n = file.info(png_file)$size)
       return(list(
         status = 200L,
         headers = list(

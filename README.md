@@ -103,6 +103,8 @@ for p in 9025 9026 9027 9028; do sudo lsof -nP -iTCP:$p -sTCP:LISTEN; done
 
 Detach: `Ctrl+A`, then `D`. Each app serves `/genes/{name}` as a PNG and `GET /health` → `{"status":"ok",…}`. `server.py` proxies plots as `/r/{port}/{path}` and `/api/{scrna-epithelial,scrna-eec,atac-all,atac-celltype}/…` (so `/api/…/health` works too). Python itself: `GET /health` on port **8000**.
 
+PNG cache: each R script uses `/tmp/r_cache_gut_*` (`dir.create` on startup and per request if cleaned). Restart R servers after pulling cache changes.
+
 ### Health check (cron)
 
 Versioned under `utils/` (not a one-off `crontab -e`):
