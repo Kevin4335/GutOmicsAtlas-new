@@ -27,12 +27,9 @@ const logo: CSSProperties = {
 const logoMark: CSSProperties = {
   width: 36,
   height: 36,
-  background: 'var(--navy)',
-  borderRadius: 8,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
   flexShrink: 0,
+  display: 'block',
+  borderRadius: 8,
 }
 
 const logoTitle: CSSProperties = {
@@ -255,14 +252,13 @@ export default function NavBar() {
   return (
     <header style={header}>
       <NavLink to="/" style={logo}>
-        <div style={logoMark}>
-          <svg
-            viewBox="0 0 24 24"
-            style={{ width: 20, height: 20, fill: 'none', stroke: 'white', strokeWidth: 1.8 }}
-          >
-            <path d="M5 3h11a3 3 0 010 6H8a3 3 0 000 6h8a3 3 0 010 6H5" />
-          </svg>
-        </div>
+        <img
+          src="/imgs/gutomics-logo.svg"
+          alt="GutOmicsAtlas"
+          width={36}
+          height={36}
+          style={logoMark}
+        />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={logoTitle}>GutOmicsAtlas</span>
           <span style={logoSub}>Multi-Omics · Human Gut</span>
