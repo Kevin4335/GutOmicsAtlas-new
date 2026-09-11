@@ -59,11 +59,16 @@ else
 fi
 
 echo ""
-echo "Checking port 80..."
-if lsof -ti:80 > /dev/null 2>&1; then
-    echo "  ✓ Port 80 is active"
+echo "Checking ports..."
+if lsof -ti:8000 > /dev/null 2>&1; then
+    echo "  ✓ Port 8000 (FastAPI/uvicorn) is active"
 else
-    echo "  ✗ Port 80 is NOT active. If the server failed to start, check: /tmp/webserver_screen.log"
+    echo "  ✗ Port 8000 is NOT active. Check: /tmp/webserver_screen.log"
+fi
+if lsof -ti:80 > /dev/null 2>&1; then
+    echo "  ✓ Port 80 (nginx) is active"
+else
+    echo "  ✗ Port 80 is NOT active"
 fi
 
 echo ""

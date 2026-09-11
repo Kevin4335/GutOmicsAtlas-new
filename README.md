@@ -11,7 +11,7 @@ Interactive site for human gut scRNA-seq, snATAC-seq, and spatial transcriptomic
 ## Architecture
 
 1. **React frontend** (`frontend/`): pages, gene search, overview figures. Production build is `frontend/dist/`.
-2. **`server.py`**: HTTP on port **8000**. Serves the SPA, `/imgs/`, `/data/st/…`, proxies R plots, handles `POST /chat`.
+2. **`server.py`**: FastAPI + uvicorn on port **8000**. Serves the SPA, `/imgs/`, `/data/st/…`, proxies R plots, handles `POST /chat`.
 3. **R plot servers** (`resources/`): on-demand scRNA and snATAC PNGs. Spatial gene images are static files, not rendered live.
 4. **`ai.py`**: Chat with AI. Plans tool calls, runs them in parallel, then writes one reply. Planner and synthesizer use Claude (`config.py` / `ANTHROPIC_MODEL`). Swap that client to use another model; plot tools and GLKB stay the same. Details: **[AI_README.md](AI_README.md)**.
 
@@ -23,7 +23,7 @@ An earlier version of the chat code was adapted from a prior CosMx-based assista
 
 ## Chat with AI (`POST /chat`)
 
-Entry: `process_ai_chat`. Body is `{ "history": [...], "options": { "glkb": true } }` or a bare message array. Rate limit: 100 requests/hour/process. Full architecture, tools, and examples: **[AI_README.md](AI_README.md)**.
+Entry: `process_ai_chat` (returns `(status, body)` for FastAPI `POST /chat`). Body is `{ "history": [...], "options": { "glkb": true } }` or a bare message array. Rate limit: 100 requests/hour/process. Full architecture, tools, and examples: **[AI_README.md](AI_README.md)**.
 
 1. **Plan**: Claude picks tools (`create_plan`).
 2. **Execute**: tools run concurrently.
@@ -150,7 +150,7 @@ bash utils/restart_webserver.sh
 screen -r webserver
 ```
 
-Stops old `webserver` sessions, frees port **80**, runs `npm install` + `npm run build`, starts `python3 server.py` in screen session `webserver`, logs to `/tmp/webserver_screen.log`. Restart after editing `ai.py` or `server.py`. Rebuild the frontend after UI or static image changes.
+Stops old `webserver` sessions, frees port **80**, runs `npm install` + `npm run build`, starts `python3 server.py` (FastAPI via uvicorn on **8000**) in screen session `webserver`, logs to `/tmp/webserver_screen.log`. Restart after editing `ai.py` or `server.py`. Rebuild the frontend after UI or static image changes.
 
 Frontend: production UI is `frontend/dist/`. Dev proxy is `frontend/vite.config.ts`. `/spatial-metabolomics` redirects to `/spatial-transcriptomics`.
 

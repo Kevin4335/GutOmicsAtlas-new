@@ -10,6 +10,10 @@ openai>=1.0.0
 anthropic>=0.25.0
 requests>=2.31.0
 
+# --- App server ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
 # --- Images ---
 # Used by `ai.py` to downscale PNGs before sending to vision models.
 Pillow>=10.0.0

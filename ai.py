@@ -1253,36 +1253,18 @@ def c2s_chat(message: str) -> Tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# HTTP handler  (API contract unchanged)
+# Chat entry (used by FastAPI POST /chat)
 # ---------------------------------------------------------------------------
 
-def process_ai_chat(request, path: str):
-    print('AI chat')
-    MAX_BODY_BYTES = 256_000
+def process_ai_chat(payload: Any) -> Tuple[int, Any]:
+    """
+    Run one chat turn from a parsed JSON body.
 
-    cl = int(request.headers.get("Content-Length", "0") or "0")
-    if cl <= 0 or cl > MAX_BODY_BYTES:
-        request.send_response(413)
-        request.send_header("Content-Length", 0)
-        request.send_header("Access-Control-Allow-Origin", "*")
-        request.end_headers()
-        return
-
-    user_input = request.rfile.read(cl).decode("utf-8", errors="replace")
+    Accepts either a message list or {"history":[...],"options":{...}}.
+    Returns (status_code, body) where body is a dict on success or a str/None on error.
+    """
+    print("AI chat")
     agent_options: Dict[str, Any] = {"glkb": True, "c2s": True}
-
-    try:
-        payload = json.loads(user_input)
-    except json.JSONDecodeError:
-        bad = b"Invalid JSON body"
-        request.send_response(400)
-        request.send_header("Connection", "keep-alive")
-        request.send_header("Content-Length", len(bad))
-        request.send_header("Access-Control-Allow-Origin", "*")
-        request.end_headers()
-        request.wfile.write(bad)
-        request.wfile.flush()
-        return
 
     if isinstance(payload, list):
         history = payload
@@ -1293,25 +1275,13 @@ def process_ai_chat(request, path: str):
             agent_options["glkb"] = o.get("glkb", True) is not False
             agent_options["c2s"] = o.get("c2s", True) is not False
     else:
-        bad = b'Expected a JSON array of messages or {"history":[...],"options":{"glkb":true,"c2s":true}}'
-        request.send_response(400)
-        request.send_header("Connection", "keep-alive")
-        request.send_header("Content-Length", len(bad))
-        request.send_header("Access-Control-Allow-Origin", "*")
-        request.end_headers()
-        request.wfile.write(bad)
-        request.wfile.flush()
-        return
+        return (
+            400,
+            'Expected a JSON array of messages or {"history":[...],"options":{"glkb":true,"c2s":true}}',
+        )
 
-    if within_rate_limit() == False:
-        request.send_response(429)
-        request.send_header('Connection', 'keep-alive')
-        request.send_header('Content-Length', 0)
-        request.send_header('Access-Control-Allow-Origin', '*')
-        request.end_headers()
-        request.wfile.write(b'')
-        request.wfile.flush()
-        return
+    if within_rate_limit() is False:
+        return 429, None
 
     MAX_TURNS = 30
     if isinstance(history, list) and len(history) > MAX_TURNS:
@@ -1331,30 +1301,12 @@ def process_ai_chat(request, path: str):
     log_queue.put(
         json.dumps({"history": history, "options": agent_options}, ensure_ascii=False)
     )
-    success, error_msg, messages = get_gpt_resp(history, agent_options)
+    _success, error_msg, messages = get_gpt_resp(history, agent_options)
 
     if error_msg:
-        request.send_response(500)
-        error_msg = error_msg.encode('utf-8')
-        request.send_header('Content-Length', len(error_msg))
-        request.send_header('Connection', 'keep-alive')
-        request.send_header('Access-Control-Allow-Origin', '*')
-        request.end_headers()
-        request.wfile.write(error_msg)
-        request.wfile.flush()
-        return
+        return 500, error_msg
 
-    request.send_response(200)
-    resp_data = json.dumps({'history': history, 'messages': messages}, ensure_ascii=False)
-    resp_data = resp_data.encode('utf-8')
-    request.send_header('Content-Length', len(resp_data))
-    request.send_header('Connection', 'keep-alive')
-    request.send_header('Access-Control-Allow-Origin', '*')
-    request.end_headers()
-    request.wfile.write(resp_data)
-    request.wfile.flush()
-    return
-
+    return 200, {"history": history, "messages": messages}
 
 # ---------------------------------------------------------------------------
 # Async log writer

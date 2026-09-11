@@ -1,6 +1,6 @@
 # AI assistant (`ai.py`)
 
-How Chat with AI works on GutOmicsAtlas. HTTP entry: `process_ai_chat` (from `server.py` on `POST /chat`). Orchestration: `get_gpt_resp`.
+How Chat with AI works on GutOmicsAtlas. HTTP entry: `process_ai_chat` → `(status, body)` for FastAPI `POST /chat` in `server.py`. Orchestration: `get_gpt_resp`.
 
 This is **not** Anthropic's default multi-round tool loop. Claude does not call `scRNA` or GLKB directly. It only emits a plan; Python runs the tools.
 
