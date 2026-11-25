@@ -4,6 +4,7 @@ import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { LoadingBar } from '../components/LoadingBar'
+import { DownloadLinks, type DownloadItem } from '../components/DownloadLinks'
 import { SCRNA_GENES } from '../data/scrnaGenes'
 
 type CellType = 'all' | 'epithelial'
@@ -87,6 +88,24 @@ function getSnAtacImageUrl(opts: { loci: string; cellType: CellType }): string {
   const path = opts.cellType === 'all' ? ATAC_PATH.all : ATAC_PATH.celltype
   const encodedLoci = encodeURIComponent(opts.loci)
   return `${path}/genes/${encodedLoci}`
+}
+
+function snatacTabDownloads(cellType: CellType, tab: SnatacTab): DownloadItem[] {
+  const folder = cellType === 'all' ? 'allcells' : 'epithelial'
+  const base = `/downloads/snatac/${folder}`
+  const rds = cellType === 'all' ? `${base}/allcellsatac.rds` : `${base}/Epithelialnew.rds`
+  const plotCode = cellType === 'all' ? `${base}/atacallcells.R` : `${base}/atacepithelial.R`
+
+  if (tab === 'overview') {
+    return [
+      { href: rds, label: 'Download processed data (.rds)' },
+      { href: `${base}/Codesforumapdotplot.R`, label: 'Download UMAP/dotplot code (.R)' },
+    ]
+  }
+  return [
+    { href: rds, label: 'Download processed data (.rds)' },
+    { href: plotCode, label: 'Download plot code (.R)' },
+  ]
 }
 
 /** Same gene bank as scRNA; hide suggestions when input looks like a genomic interval. */
@@ -290,6 +309,7 @@ export default function Snatac() {
 
   const resultTitle = `snATAC · ${cellType === 'all' ? 'All cell types' : 'Epithelial'} · Result Chart · Coverage Plot`
   const overview = OVERVIEW_BY_CELL[cellType]
+  const tabDownloads = useMemo(() => snatacTabDownloads(cellType, tab), [cellType, tab])
   const showGeneSuggestions =
     lociDropdownOpen &&
     query.trim().length > 0 &&
@@ -401,29 +421,32 @@ export default function Snatac() {
           </div>
 
           {tab === 'overview' ? (
-            <div className="snatac-two-col" style={twoCol}>
-              <div style={card}>
-                <div style={cardHeader}>
-                  <div style={cardTitle}>{overview.leftLabel}</div>
+            <div>
+              <DownloadLinks items={tabDownloads} />
+              <div className="snatac-two-col" style={twoCol}>
+                <div style={card}>
+                  <div style={cardHeader}>
+                    <div style={cardTitle}>{overview.leftLabel}</div>
+                  </div>
+                  <div style={{ ...cardBody, padding: 12 }}>
+                    <LightboxZoomImage
+                      alt={overview.leftLabel}
+                      src={overview.leftSrc}
+                      style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
+                    />
+                  </div>
                 </div>
-                <div style={{ ...cardBody, padding: 12 }}>
-                  <LightboxZoomImage
-                    alt={overview.leftLabel}
-                    src={overview.leftSrc}
-                    style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
-                  />
-                </div>
-              </div>
-              <div style={card}>
-                <div style={cardHeader}>
-                  <div style={cardTitle}>{overview.rightLabel}</div>
-                </div>
-                <div style={{ ...cardBody, padding: 12 }}>
-                  <LightboxZoomImage
-                    alt={overview.rightLabel}
-                    src={overview.rightSrc}
-                    style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
-                  />
+                <div style={card}>
+                  <div style={cardHeader}>
+                    <div style={cardTitle}>{overview.rightLabel}</div>
+                  </div>
+                  <div style={{ ...cardBody, padding: 12 }}>
+                    <LightboxZoomImage
+                      alt={overview.rightLabel}
+                      src={overview.rightSrc}
+                      style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -431,6 +454,7 @@ export default function Snatac() {
 
           {tab === 'result' ? (
             <>
+              <DownloadLinks items={tabDownloads} />
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 }}>
                   <span style={fieldLabel}>Gene or loci</span>

@@ -68,7 +68,7 @@ async def chat(request: Request):
 
     try:
         payload: Any = await request.json()
-    except Exception:
+        except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     # LLM work is blocking run in threadpool so other routes stay responsive.
@@ -89,27 +89,27 @@ async def chat(request: Request):
 # ---------------------------------------------------------------------------
 
 def _proxy_r(port: int, upstream_path: str, query: str = "") -> Response:
-    if port < 1024 or port > 65535:
+        if port < 1024 or port > 65535:
         raise HTTPException(status_code=404, detail="Not found")
     # Preserve path segments; genes may include encoded characters already decoded by FastAPI.
     safe_path = quote(upstream_path.lstrip("/"), safe="/:@-._~!$&'()*+,;=")
     url = f"http://127.0.0.1:{port}/{safe_path}"
-    if query:
+        if query:
         url = f"{url}?{query}"
-    try:
-        with urllib.request.urlopen(url, timeout=3600) as resp:
-            body = resp.read()
+        try:
+            with urllib.request.urlopen(url, timeout=3600) as resp:
+                body = resp.read()
             status = resp.getcode() or 200
             content_type = resp.headers.get("Content-Type", "application/octet-stream")
-    except urllib.error.HTTPError as e:
-        body = e.read()
-        status = e.code
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            status = e.code
         content_type = (
             e.headers.get("Content-Type", "text/plain; charset=utf-8")
             if e.headers
             else "text/plain; charset=utf-8"
         )
-    except Exception:
+        except Exception:
         return PlainTextResponse(
             content="R proxy: upstream unreachable",
             status_code=502,
@@ -209,6 +209,15 @@ if (FRONTEND_DIST / "assets").is_dir():
 
 if (FRONTEND_DIST / "imgs").is_dir():
     app.mount("/imgs", StaticFiles(directory=FRONTEND_DIST / "imgs"), name="imgs")
+
+# Revision downloadables (RDS, R scripts, CSVs) staged under revision_prepared/downloads.
+DOWNLOADS_DIR = BASE_DIR / "revision_prepared" / "downloads"
+if DOWNLOADS_DIR.is_dir():
+    app.mount(
+        "/downloads",
+        StaticFiles(directory=DOWNLOADS_DIR),
+        name="downloads",
+    )
 
 
 @app.get("/favicon.ico")

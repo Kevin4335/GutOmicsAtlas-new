@@ -10,7 +10,7 @@ CACHE_DIR <- "/tmp/r_cache_gut_atac_all"
 dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
 
 cat("import finished", "\n")
-category<-readRDS("/home/ubuntu/website/data/atac/All_cells/integratedgutcategory.rds")
+category<-readRDS("/home/ubuntu/website/data/atac/All_cells/allcellsatac.rds")
 #Change path of fragment files
 cat("readRDS finished", "\n")
 category@assays[["ATAC"]]@fragments[[1]]@path<-"/home/ubuntu/website/data/atac/source-selected/M1_3834_midgut/fragments.tsv.gz"

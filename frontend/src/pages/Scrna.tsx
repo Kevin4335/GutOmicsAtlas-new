@@ -5,6 +5,7 @@ import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { LoadingBar } from '../components/LoadingBar'
+import { DownloadLinks, type DownloadItem } from '../components/DownloadLinks'
 import { SCRNA_GENES } from '../data/scrnaGenes'
 
 type CellType = 'epithelial' | 'enteroendocrine'
@@ -56,13 +57,78 @@ const GOBLET_BY_STAGE: Record<Stage, { maSrc: string; violinSrc: string; degHref
   adult: {
     maSrc: '/imgs/scrna_adult_epithelial_GobletcellsIMAplot.png',
     violinSrc: '/imgs/GobletcellsvsepithelialviolinplotAdult.png',
-    degHref: '/imgs/goblet_no_embed.xls',
+    degHref: '/imgs/scrna_adult_epithelial_gobletcell.csv',
   },
   fetal: {
     maSrc: '/imgs/scrna_fetal_epithelial_GobletcellsIMAplot.png',
     violinSrc: '/imgs/GobletcellsvsepithelialviolinplotFetal.png',
-    degHref: '/imgs/goblet_no_embed.xls',
+    degHref: '/imgs/scrna_fetal_epithelial_gobletcell.csv',
   },
+}
+
+/** Revision downloadables under `/downloads/...` (only files present in the pack). */
+function scrnaTabDownloads(
+  cellType: CellType,
+  stage: Stage,
+  tab: ScrnaTab,
+  regionDegHref: string,
+  gobletDegHref: string,
+): DownloadItem[] {
+  const kind = cellType === 'epithelial' ? 'epithelial' : 'enteroendocrine'
+  const base = `/downloads/scrna/${stage}/${kind}`
+  const rds =
+    cellType === 'epithelial'
+      ? stage === 'fetal'
+        ? `${base}/fetalsample.rds`
+        : `${base}/adultintestine.rds`
+      : stage === 'fetal'
+        ? `${base}/eecupdated.rds`
+        : `${base}/adultEECs.rds`
+
+  if (cellType === 'epithelial') {
+    if (tab === 'overview') {
+      return [
+        { href: rds, label: 'Download processed data (.rds)' },
+        { href: `${base}/Codesforumapdotplot.R`, label: 'Download UMAP/dotplot code (.R)' },
+      ]
+    }
+    if (tab === 'result') {
+      return [
+        { href: rds, label: 'Download processed data (.rds)' },
+        { href: `${base}/scRNAfunction.R`, label: 'Download plot code (.R)' },
+      ]
+    }
+    if (tab === 'region') {
+      return [
+        { href: regionDegHref, label: 'Download DEG list' },
+        { href: `${base}/RegionComparison/maplot.R`, label: 'Download MA plot code (.R)' },
+      ]
+    }
+    if (tab === 'goblet') {
+      return [
+        { href: gobletDegHref, label: 'Download DEG list' },
+        { href: `${base}/Gobletcells/maplotGobletcell.R`, label: 'Download MA plot code (.R)' },
+        { href: `${base}/Gobletcells/Gobletcells.rds`, label: 'Download processed data (.rds)' },
+        { href: `${base}/Gobletcells/Gobletcellviolinplot.R`, label: 'Download violin plot code (.R)' },
+      ]
+    }
+  }
+
+  // Enteroendocrine: no Codesforumapdotplot.R for fetal in the pack
+  if (tab === 'overview') {
+    const items: DownloadItem[] = [{ href: rds, label: 'Download processed data (.rds)' }]
+    if (stage === 'adult') {
+      items.push({ href: `${base}/CodesforUMAPdotplot.R`, label: 'Download UMAP/dotplot code (.R)' })
+    }
+    return items
+  }
+  if (tab === 'result') {
+    return [
+      { href: rds, label: 'Download processed data (.rds)' },
+      { href: `${base}/EECplot.R`, label: 'Download plot code (.R)' },
+    ]
+  }
+  return []
 }
 
 const SCRNA_STYLE_TAG = `
@@ -372,6 +438,10 @@ export default function Scrna() {
   const overviewDefaults = useMemo(() => OVERVIEW_BY_CELL_AND_STAGE[cellType][stage], [cellType, stage])
   const regionDefaults = useMemo(() => REGION_BY_STAGE[stage], [stage])
   const gobletDefaults = useMemo(() => GOBLET_BY_STAGE[stage], [stage])
+  const tabDownloads = useMemo(
+    () => scrnaTabDownloads(cellType, stage, tab, regionDefaults.degHref, gobletDefaults.degHref),
+    [cellType, stage, tab, regionDefaults.degHref, gobletDefaults.degHref],
+  )
 
   useEffect(() => {
     setImgDataUrl(null)
@@ -521,6 +591,7 @@ export default function Scrna() {
           {/* Overview */}
           {tab === 'overview' ? (
             <div>
+              <DownloadLinks items={tabDownloads} />
               <div className="two-col-grid" style={twoCol}>
                 <div style={card}>
                   <div style={cardHeader}>
@@ -545,6 +616,7 @@ export default function Scrna() {
           {/* Result Chart (only backend call) */}
           {tab === 'result' ? (
             <div>
+              <DownloadLinks items={tabDownloads} />
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 }}>
                   <span style={fieldLabel}>Gene Name</span>
@@ -692,28 +764,7 @@ export default function Scrna() {
           {/* Region Comparison (static) */}
           {tab === 'region' ? (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <a
-                  href={regionDefaults.degHref}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 14px',
-                    border: '1px solid var(--border2)',
-                    borderRadius: 6,
-                    background: 'var(--surface)',
-                    color: 'var(--muted)',
-                    fontSize: '.78rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: "'Montserrat', sans-serif",
-                    textDecoration: 'none',
-                  }}
-                >
-                  Download DEG list
-                </a>
-              </div>
+              <DownloadLinks items={tabDownloads} />
               <div className="two-col-grid" style={twoCol}>
                 <div style={card}>
                   <div style={cardHeader}>
@@ -746,28 +797,7 @@ export default function Scrna() {
           {/* Goblet Cells (static) */}
           {tab === 'goblet' ? (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <a
-                  href={gobletDefaults.degHref}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 14px',
-                    border: '1px solid var(--border2)',
-                    borderRadius: 6,
-                    background: 'var(--surface)',
-                    color: 'var(--muted)',
-                    fontSize: '.78rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: "'Montserrat', sans-serif",
-                    textDecoration: 'none',
-                  }}
-                >
-                  Download DEG list
-                </a>
-              </div>
+              <DownloadLinks items={tabDownloads} />
               <div className="two-col-grid" style={twoCol}>
                 <div style={card}>
                   <div style={cardHeader}>

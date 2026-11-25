@@ -3,9 +3,24 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import NavBar from '../components/NavBar'
 import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
+import { DownloadLinks, type DownloadItem } from '../components/DownloadLinks'
 import { ST_ALL_GENES } from '../data/stGenes'
 
 type StTab = 'overview' | 'spatial-area' | 'gene-expr'
+
+const SPATIAL_DOWNLOADS: Record<StTab, DownloadItem[]> = {
+  overview: [
+    { href: '/downloads/spatial/newgutassignedmarker.rds', label: 'Download processed data (.rds)' },
+    { href: '/downloads/spatial/Codeforumapdotplot.R', label: 'Download UMAP/dotplot code (.R)' },
+  ],
+  'spatial-area': [
+    { href: '/downloads/spatial/newgutassignedmarker.rds', label: 'Download processed data (.rds)' },
+  ],
+  'gene-expr': [
+    { href: '/downloads/spatial/newgutassignedmarker.rds', label: 'Download processed data (.rds)' },
+    { href: '/downloads/spatial/Spatial_plots_across_3_tissues.R', label: 'Download plot code (.R)' },
+  ],
+}
 
 /** Same origin `/st/{gene}.png` or `VITE_SPATIAL_ST_DATA_BASE` / `VITE_SPATIAL_SM_DATA_BASE`. */
 function stDataRoot(): string {
@@ -341,6 +356,7 @@ export default function SpatialTranscriptomics() {
             </div>
 
             <div className={`st-tab-pane${tab === 'overview' ? ' active' : ''}`}>
+              <DownloadLinks items={SPATIAL_DOWNLOADS.overview} />
               <div className="st-overview-stack">
                 {OVERVIEW_IMAGES.map((item, i) => (
                   <div key={item.src} className="st-chart-card">
@@ -358,6 +374,7 @@ export default function SpatialTranscriptomics() {
             </div>
 
             <div className={`st-tab-pane${tab === 'spatial-area' ? ' active' : ''}`}>
+              <DownloadLinks items={SPATIAL_DOWNLOADS['spatial-area']} />
               <div className="st-chart-card">
                 <div className="st-chart-card-header">
                   <div className="st-chart-title">{SPATIAL_AREA_IMAGE.title}</div>
@@ -369,6 +386,7 @@ export default function SpatialTranscriptomics() {
             </div>
 
             <div className={`st-tab-pane${tab === 'gene-expr' ? ' active' : ''}`}>
+              <DownloadLinks items={SPATIAL_DOWNLOADS['gene-expr']} />
               <div className="st-gene-search-row">
                 <div className="st-field-group st-dropdown-wrap">
                   <span className="st-field-label">Gene name</span>

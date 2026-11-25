@@ -11,6 +11,12 @@ id_rsa
 config.py
 utils/ntfy.env
 .env
+revision_prepared/downloads/
+revision_prepared/spatial_st/
+revision_prepared/imgs/
 
 instructions/
 EPCOT_Agent.pdf
+
+revision_docs/
+revision_prepared/

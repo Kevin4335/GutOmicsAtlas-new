@@ -17,9 +17,7 @@ dir.create(CACHE_DIR, showWarnings = FALSE, recursive = TRUE)
 fetal.epi <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Fetal/Epithelialcells/fetalsample.rds")
 adult.epi <- readRDS("/home/ubuntu/website/data/REVISED_DATA/scRNA/Adult/Epithelialcells/adultintestine.rds")
 
-new.cluster.ids <- c("Stem cells","TA cells","Enterocytes","Goblet cells", "EECs","Paneth cells")
-names(new.cluster.ids) <- levels(fetal.epi)
-fetal.epi <- RenameIdents(fetal.epi, new.cluster.ids)
+# Revision RDS already has named Idents (incl. Tuft cells). Old 6-label RenameIdents breaks startup.
 
 # ================== Plotting function ==================
 scRNA <- function(obj, genes, pdf_path) {
