@@ -5,6 +5,7 @@ import Footer from '../components/Footer'
 import { LightboxZoomImage } from '../components/LightboxZoomImage'
 import { LoadingBar } from '../components/LoadingBar'
 import { DownloadLinks, type DownloadItem } from '../components/DownloadLinks'
+import { ATAC_ALL_GENES } from '../data/atacAllGenes'
 import { SCRNA_GENES } from '../data/scrnaGenes'
 
 type CellType = 'all' | 'epithelial'
@@ -288,18 +289,21 @@ export default function Snatac() {
   const [error, setError] = useState<string | null>(null)
   const [imgDataUrl, setImgDataUrl] = useState<string | null>(null)
 
+  /** All-cells: Annotation list from collaborators; epithelial still uses shared scRNA bank. */
+  const geneBank = cellType === 'all' ? ATAC_ALL_GENES : SCRNA_GENES
+
   const filteredAtacGenes = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return SCRNA_GENES.slice(0, 16)
+    if (!q) return geneBank.slice(0, 16)
     const out: string[] = []
-    for (const g of SCRNA_GENES) {
+    for (const g of geneBank) {
       if (g.toLowerCase().includes(q)) {
         out.push(g)
         if (out.length >= 16) break
       }
     }
     return out
-  }, [query])
+  }, [query, geneBank])
 
   useEffect(() => {
     setImgDataUrl(null)

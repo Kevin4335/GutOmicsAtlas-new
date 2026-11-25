@@ -23,6 +23,9 @@ category@assays[["ATAC"]]@fragments[[7]]@path<-"/home/ubuntu/website/data/atac/s
 category@assays[["ATAC"]]@fragments[[8]]@path<-"/home/ubuntu/website/data/atac/source-selected/F1_3834_foregut/fragments.tsv.gz"
 category@assays[["ATAC"]]@fragments[[9]]@path<-"/home/ubuntu/website/data/atac/source-selected/3824_colon/fragments.tsv.gz"
 cat("loading fragment files finished", "\n")
+# Pack generator (snATAC/Allcells/atacallcells.R) sets this before CoveragePlot.
+# New RDS often defaults to RNA; without ATAC, Signac errors: "Requested assay is not a ChromatinAssay."
+DefaultAssay(category) <- "ATAC"
 ataccategory<-function(genes, upstream, downstream, pdf_path){
 p1<-CoveragePlot(
     object = category,
